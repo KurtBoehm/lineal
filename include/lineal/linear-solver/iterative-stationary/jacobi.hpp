@@ -1,0 +1,9 @@
+#ifndef INCLUDE_LINEAL_LINEAR_SOLVER_ITERATIVE_STATIONARY_JACOBI_HPP
+#define INCLUDE_LINEAL_LINEAR_SOLVER_ITERATIVE_STATIONARY_JACOBI_HPP
+
+// IWYU pragma: begin_exports
+#include "jacobi/solver.hpp"
+#include "jacobi/sweep.hpp"
+// IWYU pragma: end_exports
+
+#endif // INCLUDE_LINEAL_LINEAR_SOLVER_ITERATIVE_STATIONARY_JACOBI_HPP

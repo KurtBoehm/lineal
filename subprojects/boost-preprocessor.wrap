@@ -1,0 +1,15 @@
+# This file is part of https://github.com/KurtBoehm/tlaxcaltin.
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+[wrap-file]
+directory = preprocessor-boost-1.87.0
+source_url = https://github.com/boostorg/preprocessor/archive/refs/tags/boost-1.87.0.tar.gz
+source_filename = preprocessor-boost-1.87.0.tar.gz
+source_hash = b56db0e8c6757fe7dea8181a13a68e2328b51b8297f3a5f12d91159e6cd268fc
+patch_directory = boost-preprocessor
+
+[provide]
+boost-preprocessor = boost_preprocessor_dep

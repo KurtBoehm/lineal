@@ -1,0 +1,8 @@
+#ifndef INCLUDE_LINEAL_TENSOR_DYNAMIC_STENCIL_STORAGE_HPP
+#define INCLUDE_LINEAL_TENSOR_DYNAMIC_STENCIL_STORAGE_HPP
+
+// IWYU pragma: begin_exports
+#include "storage/cell-storage.hpp"
+// IWYU pragma: end_exports
+
+#endif // INCLUDE_LINEAL_TENSOR_DYNAMIC_STENCIL_STORAGE_HPP

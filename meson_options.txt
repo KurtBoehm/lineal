@@ -1,0 +1,2 @@
+option('test', type: 'boolean', value: false)
+option('test_simd', type: 'boolean', value: false)

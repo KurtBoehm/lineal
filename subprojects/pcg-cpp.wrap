@@ -1,0 +1,8 @@
+[wrap-git]
+url = https://github.com/imneme/pcg-cpp.git
+revision = head
+clone-recursive = true
+patch_directory = pcg-cpp
+
+[provide]
+pcg-cpp = pcg_cpp_dep
