@@ -1,6 +1,6 @@
 # Lineal 📏: An Efficient Header-Only C++20 Linear Algebra Library
 
-**Lineal** (a portmanteau of “Linear Algebra”, but also German “ruler”) is a C++20 linear algebra library designed to solve large sparse linear systems arising from PDE discretization on attainable hardware by optimizing runtime and, especially, memory consumption.
+**Lineal** (a portmanteau of “Linear Algebra”, but also the measuring and drawing device “ruler” in German) is a C++20 linear algebra library designed to solve large sparse linear systems arising from PDE discretization on attainable hardware by optimizing runtime and, especially, memory consumption.
 To this end, Lineal supports matrix-free linear systems for stencil-based problems, which can store a single value per cell (which can be as little as one byte) to minimize memory use.
 Because of Lineal’s very generic, template-heavy approach in which matrices and vectors are just characterized by a set of members they need to provide (i.e. _named requirements_ in the jargon of the C++ standard), the “matrix-free” matrix and vector classes can be used mostly interchangeably with more traditional CSR matrices or dense vectors.
 
@@ -8,7 +8,7 @@ Consequently, Lineal allows matrix-free linear systems to be paired with **MAMGO
 This drastically reduces memory consumption on the finest level, which (by nature of the AMG method) is the largest level by far, and is a novel approach, to the best of my knowledge.
 MAMGO works best, as is mainly used, as a preconditioner to a Krylov subspace method, such as the CG method.
 
-Due to Lineal’s heavy use of very generic templates, the aforementioned components (and most others) can be combined with Lineal’s flexible support for mixed precision to minimize memory use as well as the effect of reduced precision on convergence.
+Due to Lineal’s heavy use of very generic templates, the aforementioned components (and most others) provide flexible support for mixed precision to minimize memory use as well as the effect of reduced precision on convergence.
 Additionally, almost all components are fully multithreaded (with support for thread pinning) and many support explicit SIMD operations and/or tiling.
 
 Further details about the design of Lineal, as well as an evaluation of various features and comparisons with [hypre’s BoomerAMG](https://hypre.readthedocs.io/en/latest/solvers-boomeramg.html), [DUNE ISTL](https://gitlab.dune-project.org/core/dune-istl/-/tree/master/dune/istl/paamg), and [Ginkgo](https://ginkgo-project.github.io/), are presented in _Lineal: An Efficient Linear Algebra Library_, a paper by Kurt Böhm (the author of this library) and Olaf Ippisch (the research supervisor).
