@@ -61,28 +61,26 @@ struct AssignSinkBase
   AssignSinkBase(TDst&& dst, TSrc&& src)
       : Parent(std::forward<TDst>(dst), std::forward<TSrc>(src)) {}
 
-  THES_ALWAYS_INLINE static constexpr auto compute_impl(auto tag, [[maybe_unused]] auto& children,
+  THES_ALWAYS_INLINE static constexpr auto compute_iter(auto tag, [[maybe_unused]] auto& children,
                                                         auto dst_it, auto src_it)
-  requires(requires() {
-    dst_it.store(grex::convert_unsafe<DstValue>(src_it.compute(tag), tag), tag);
-  })
+  requires(requires() { dst_it.store(grex::convert_unsafe<DstValue>(src_it.compute(tag)), tag); })
   {
     assert(src_it - thes::star::get_at<1>(children).begin() <
            thes::star::get_at<1>(children).size());
     const auto val = src_it.compute(tag);
-    dst_it.store(grex::convert_unsafe<DstValue>(val, tag), tag);
+    dst_it.store(grex::convert_unsafe<DstValue>(val), tag);
     return val;
   }
   THES_ALWAYS_INLINE static constexpr auto
-  compute_impl(auto tag, const auto& arg, const auto& /*children*/, auto& dst, auto& src)
+  compute_base(auto tag, const auto& arg, const auto& /*children*/, auto& dst, auto& src)
   requires(requires() {
     dst.store(add_tag<TIdxTag>(arg),
-              convert_unsafe<DstValue>(src.compute(add_tag<TIdxTag>(arg), tag), tag), tag);
+              grex::convert_unsafe<DstValue>(src.compute(add_tag<TIdxTag>(arg), tag)), tag);
   })
   {
     const auto arg_tag = add_tag<TIdxTag>(arg);
     const auto val = src.compute(arg_tag, tag);
-    dst.store(arg_tag, convert_unsafe<DstValue>(val, tag), tag);
+    dst.store(arg_tag, grex::convert_unsafe<DstValue>(val), tag);
     return val;
   }
 
@@ -113,17 +111,17 @@ struct AssignSink<TDst, TSrc> : public AssignSinkBase<AssignSink<TDst, TSrc>, TD
 };
 
 template<AnyVector TDst, AnyVector TSrc>
-inline constexpr void assign(TDst&& dst, TSrc&& src, const auto& expo) {
+constexpr void assign(TDst&& dst, TSrc&& src, const auto& expo) {
   expo.execute(AssignSink<TDst, TSrc>(std::forward<TDst>(dst), std::forward<TSrc>(src)));
 }
 
 template<AnyVector TDst, AnyVector TSrc>
-inline constexpr auto assign_expr(TDst&& dst, TSrc&& src) {
+constexpr auto assign_expr(TDst&& dst, TSrc&& src) {
   return AssignSink<TDst, TSrc>(std::forward<TDst>(dst), std::forward<TSrc>(src));
 }
 
 template<SharedVector TDst, SharedVector TSrc>
-inline constexpr TDst create_from(TSrc&& src, const auto& expo) {
+constexpr TDst create_from(TSrc&& src, const auto& expo) {
   TDst dst(src.size());
   assign(dst, std::forward<TSrc>(src), expo);
   return dst;

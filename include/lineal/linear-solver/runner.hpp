@@ -35,18 +35,18 @@ inline auto run_iterative_solver(const TSolver& solver, const AnyMatrix auto& lh
       return env.dummy();
     }
   };
-  auto env_iters = [&](auto& env_wrap) {
+  auto env_iters = [&](auto& envi) {
     if constexpr (verbose) {
-      return env_wrap.add_array("iterations");
+      return envi.add_array("iterations");
     } else {
-      return env_wrap.dummy();
+      return envi.dummy();
     }
   };
-  auto env_iter = [&](auto& env_iters) {
+  auto env_iter = [&](auto& envi) {
     if constexpr (verbose) {
-      return env_iters.add_object();
+      return envi.add_object();
     } else {
-      return env_iters.dummy();
+      return envi.dummy();
     }
   };
 

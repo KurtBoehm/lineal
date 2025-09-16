@@ -97,25 +97,25 @@ iterate(const TIdx idx, const auto pos, TFilter filter, const TValuator& valuato
   using Real = TValuator::Real;
   using Size = TValuator::Size;
   using CellInfo = TValuator::CellInfo;
-  constexpr grex::Scalar tag{};
 
   decltype(auto) sys_info = valuator.info();
   const auto cell_infos = valuator.begin() + index_value(idx);
   const auto cell_info = *cell_infos;
-  const auto cell_value = valuator.cell_value(cell_info, tag);
+  const auto cell_value = valuator.cell_value(cell_info, grex::scalar_tag);
 
-  Real diagonal = valuator.diagonal_base(cell_value, tag);
+  Real diagonal = valuator.diagonal_base(cell_value, grex::scalar_tag);
   if constexpr (!thes::AnyNoOp<TDiagOp>) {
     thes::star::iota<0, TValuator::dimension_num> |
       thes::star::only_range<TValuator::non_zero_borders> |
       thes::star::for_each([&](thes::AnyIndexTag auto j) THES_ALWAYS_INLINE {
         const Size pos_j = std::get<j>(pos);
         if (pos_j == 0) [[unlikely]] {
-          diagonal +=
-            valuator.template border_diagonal_summand<j, AxisSide::START>(cell_value, tag);
+          diagonal += valuator.template border_diagonal_summand<j, AxisSide::START>(
+            cell_value, grex::scalar_tag);
         }
         if (pos_j + 1 == sys_info.axis_size(j)) [[unlikely]] {
-          diagonal += valuator.template border_diagonal_summand<j, AxisSide::END>(cell_value, tag);
+          diagonal += valuator.template border_diagonal_summand<j, AxisSide::END>(cell_value,
+                                                                                  grex::scalar_tag);
         }
       });
   }
@@ -131,17 +131,18 @@ iterate(const TIdx idx, const auto pos, TFilter filter, const TValuator& valuato
       if (pos_j > 0) [[likely]] {
         const TIdx prev = idx - offset;
         const CellInfo side_info = *(cell_infos - offset);
-        const Real diff_coeff =
-          valuator.template connection_value<j, AxisSide::START>(cell_info, side_info, tag);
+        const Real diff_coeff = valuator.template connection_value<j, AxisSide::START>(
+          cell_info, side_info, grex::scalar_tag);
         if constexpr (call && !thes::AnyNoOp<TBeforeOp>) {
           if (filter(idx, offset, std::minus{})) {
             const Real off_diag =
-              valuator.template off_diagonal<j, AxisSide::START>(diff_coeff, tag);
+              valuator.template off_diagonal<j, AxisSide::START>(diff_coeff, grex::scalar_tag);
             THES_APPLY_VALUED_RETURN(Ret, before_op(prev, off_diag));
           }
         }
         if constexpr (!thes::AnyNoOp<TDiagOp> && add) {
-          diagonal += valuator.template diagonal_summand<j, AxisSide::START>(diff_coeff, tag);
+          diagonal +=
+            valuator.template diagonal_summand<j, AxisSide::START>(diff_coeff, grex::scalar_tag);
         }
       }
 
@@ -154,16 +155,18 @@ iterate(const TIdx idx, const auto pos, TFilter filter, const TValuator& valuato
       if (pos_j + 1 < sys_info.axis_size(j)) [[likely]] {
         const TIdx succ = idx + offset;
         const CellInfo side_info = *(cell_infos + offset);
-        const Real diff_coeff =
-          valuator.template connection_value<j, AxisSide::END>(cell_info, side_info, tag);
+        const Real diff_coeff = valuator.template connection_value<j, AxisSide::END>(
+          cell_info, side_info, grex::scalar_tag);
         if constexpr (call && !thes::AnyNoOp<TAfterOp>) {
           if (filter(idx, offset, std::plus{})) {
-            const Real off_diag = valuator.template off_diagonal<j, AxisSide::END>(diff_coeff, tag);
+            const Real off_diag =
+              valuator.template off_diagonal<j, AxisSide::END>(diff_coeff, grex::scalar_tag);
             THES_APPLY_VALUED_RETURN(Ret, after_op(succ, off_diag));
           }
         }
         if constexpr (!thes::AnyNoOp<TDiagOp> && add) {
-          diagonal += valuator.template diagonal_summand<j, AxisSide::END>(diff_coeff, tag);
+          diagonal +=
+            valuator.template diagonal_summand<j, AxisSide::END>(diff_coeff, grex::scalar_tag);
         }
       }
 
@@ -200,7 +203,7 @@ iterate(const TIdx idx, const auto pos, TFilter filter, const TValuator& valuato
     // after to compute diagonal
     outer_lambda(false_tag, false_tag, true_tag);
     // diagonal
-    diagonal = valuator.diagonal(diagonal, tag);
+    diagonal = valuator.diagonal(diagonal, grex::scalar_tag);
     THES_APPLY_VALUED_RETURN(Ret, diagonal_op(idx, diagonal));
     // after to call
     THES_APPLY_VALUED_RETURN(Ret, outer_lambda(false_tag, true_tag, false_tag));
@@ -216,7 +219,7 @@ iterate(const TIdx idx, const auto pos, TFilter filter, const TValuator& valuato
     // after
     THES_APPLY_VALUED_RETURN(Ret, outer_lambda(false_tag, true_tag, true_tag));
     // diagonal
-    diagonal = valuator.diagonal(diagonal, tag);
+    diagonal = valuator.diagonal(diagonal, grex::scalar_tag);
     THES_APPLY_VALUED_RETURN(Ret, diagonal_op(idx, diagonal));
 
     THES_RETURN_EMPTY_OPTIONAL(Ret);
@@ -224,7 +227,7 @@ iterate(const TIdx idx, const auto pos, TFilter filter, const TValuator& valuato
 }
 
 template<typename TIdx, typename TValuator, typename TBeforeOp, typename TAfterOp,
-         grex::VectorTag TTag>
+         grex::AnyVectorTag TTag>
 THES_ALWAYS_INLINE inline constexpr void
 banded_iterate(const TIdx idx, const auto pos, const TValuator& valuator, TBeforeOp before_op,
                auto diagonal_op, TAfterOp after_op, UnorderedTag /*is_ordered*/, TTag vec_tag) {
@@ -236,7 +239,7 @@ banded_iterate(const TIdx idx, const auto pos, const TValuator& valuator, TBefor
   constexpr auto dimension_num = TValuator::dimension_num;
   constexpr auto last_dim = dimension_num - 1;
 
-  auto val_tag = vec_tag.instantiate(thes::type_tag<Real>);
+  auto val_tag = vec_tag.instantiate(grex::type_tag<Real>);
 
   decltype(auto) sys_info = valuator.info();
   assert(std::get<last_dim>(pos) + vec_tag.part() <= sys_info.axis_size(thes::auto_tag<last_dim>));
@@ -251,6 +254,9 @@ banded_iterate(const TIdx idx, const auto pos, const TValuator& valuator, TBefor
   auto update_for_connection = [&](auto j, auto side, auto op, auto off_op, Size off,
                                    auto tag) THES_ALWAYS_INLINE {
     const auto side_info = off_op(cell_infos, off).load_ext(vec_tag);
+    // ASSUMPTIONS:
+    // * tag.mask()[i] = 0 → diff_coeff[i] = 0
+    // * diff_coeff[i] = 0 → off_diagonal[i] = 0 and diagonal_summand[i] = 0
     const auto diff_coeff = valuator.template connection_value<j, side>(cell_info, side_info, tag);
     op(
       valuator.template off_diagonal<j, side>(diff_coeff, tag),
@@ -300,14 +306,12 @@ banded_iterate(const TIdx idx, const auto pos, const TValuator& valuator, TBefor
           const auto start_vector =
             valuator.template border_diagonal_summand<last_dim, AxisSide::START>(cell_value,
                                                                                  val_tag);
-          diagonal = grex::select_add(start_mask, diagonal, start_vector, val_tag);
+          diagonal = grex::mask_add(start_mask, diagonal, start_vector, val_tag);
         }
 
-        auto mask = val_tag.mask();
-        mask.insert(0, false);
-        grex::TypedVectorMaskSize<Real, vec_size> mask_vector_info(mask);
+        const auto mask = val_tag.mask().insert(grex::index_tag<0>, false);
         update_for_connection(thes::index_tag<last_dim>, thes::auto_tag<AxisSide::START>, before_op,
-                              std::minus{}, 1, mask_vector_info);
+                              std::minus{}, 1, grex::typed_masked_tag(mask));
       } else {
         update_for_connection(thes::index_tag<last_dim>, thes::auto_tag<AxisSide::START>, before_op,
                               std::minus{}, 1, val_tag);
@@ -320,13 +324,12 @@ banded_iterate(const TIdx idx, const auto pos, const TValuator& valuator, TBefor
           const auto end_mask = axis_index + 1 == sys_info.axis_size(thes::auto_tag<last_dim>);
           const auto end_vector =
             valuator.template border_diagonal_summand<last_dim, AxisSide::END>(cell_value, val_tag);
-          diagonal = grex::select_add(end_mask, diagonal, end_vector, val_tag);
+          diagonal = grex::mask_add(end_mask, diagonal, end_vector, val_tag);
         }
 
         assert(dim >= pos_back + 1);
         const auto part = dim - pos_back - 1;
-        const auto mask_tag =
-          grex::VectorPartSize<vec_size>{part}.instantiate(thes::type_tag<Real>);
+        const auto mask_tag = grex::part_tag<vec_size>(part).instantiate(grex::type_tag<Real>);
         update_for_connection(thes::index_tag<last_dim>, thes::auto_tag<AxisSide::END>, after_op,
                               std::plus{}, 1, mask_tag);
       } else {

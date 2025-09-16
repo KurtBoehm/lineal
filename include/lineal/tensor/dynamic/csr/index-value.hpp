@@ -74,7 +74,7 @@ struct IndexValueIterProvider {
     return self.non_zero_offset_;
   }
 
-  static void test_if_cmp(const auto& i1, const auto& i2) {
+  static void test_if_cmp([[maybe_unused]] const auto& i1, [[maybe_unused]] const auto& i2) {
     assert(i1.columns_begin_ == i2.columns_begin_);
     assert(i1.elements_begin_ == i2.elements_begin_);
   }

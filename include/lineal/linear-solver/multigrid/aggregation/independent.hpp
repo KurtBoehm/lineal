@@ -120,8 +120,8 @@ public:
     ThreadInstance(ThreadInstance&&) noexcept = default;
     ThreadInstance& operator=(ThreadInstance&&) noexcept = default;
 
-    THES_ALWAYS_INLINE void compute_impl(grex::Scalar /*tag*/, const auto& /*children*/,
-                                         auto vtx_it) {
+    THES_ALWAYS_INLINE void compute_iter(grex::OptValuedScalarTag<Size> auto /*tag*/,
+                                         const auto& /*children*/, auto vtx_it) {
       aggregation_instance_.handle_vertex(*vtx_it, is_aggressive_);
     }
 
@@ -154,7 +154,8 @@ public:
     }
 
     template<typename TThreadInfo>
-    ThreadInstance<TThreadInfo> thread_instance(TThreadInfo&& thread_info, grex::Scalar /*tag*/) {
+    ThreadInstance<TThreadInfo> thread_instance(TThreadInfo&& thread_info,
+                                                grex::OptValuedScalarTag<Size> auto /*tag*/) {
       return {
         graph_,         params_, multithread_aggregates_, std::forward<TThreadInfo>(thread_info),
         is_aggressive_, stats_,
@@ -284,10 +285,7 @@ struct FileAggregator {
   using Size = AggregatesMap::Size;
 
   struct Params {
-    Params(std::filesystem::path base_agg_map_path)
-        : base_agg_map_path(std::move(base_agg_map_path)) {}
-
-    std::filesystem::path base_agg_map_path;
+    std::filesystem::path base_agg_map_path = thes::init_required;
   };
 
   explicit FileAggregator(Params params) : params_(std::move(params)) {}

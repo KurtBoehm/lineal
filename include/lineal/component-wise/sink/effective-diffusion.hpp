@@ -61,7 +61,7 @@ struct AreaPartSink {
   struct ThreadInstance
       : public facades::SharedNullaryCwOp<ThreadInstance<TVecTag>,
                                           detail::AreaPartSinkConf<Size, CompressMap>> {
-    using Counter = grex::TagType<Size, TVecTag>;
+    using Counter = grex::TagType<TVecTag, Size>;
     using Parent =
       facades::SharedNullaryCwOp<ThreadInstance, detail::AreaPartSinkConf<Size, CompressMap>>;
 
@@ -78,7 +78,7 @@ struct AreaPartSink {
     }
 
     template<grex::AnyTag TTag>
-    requires(std::is_void_v<TCompressMap> || grex::ScalarTag<TTag>)
+    requires(std::is_void_v<TCompressMap> || grex::AnyScalarTag<TTag>)
     THES_ALWAYS_INLINE constexpr void compute_impl(TTag tag, Size idx) {
       const Size idx1 = idx + idxs_.begin_value();
       const Size idx2 = idx1 + nb_offset_;
@@ -140,7 +140,7 @@ struct EffDiffSink {
   struct ThreadInstance
       : public facades::SharedNullaryCwOp<ThreadInstance<TVecTag>,
                                           detail::EffDiffSinkConf<TReal, Sol, CompressMap>> {
-    using Numeric = grex::TagType<TReal, TVecTag>;
+    using Numeric = grex::TagType<TVecTag, TReal>;
     using Parent =
       facades::SharedNullaryCwOp<ThreadInstance, detail::EffDiffSinkConf<TReal, Sol, CompressMap>>;
 
@@ -157,17 +157,17 @@ struct EffDiffSink {
     }
 
     template<grex::AnyTag TTag>
-    requires(std::is_void_v<TCompressMap> || grex::ScalarTag<TTag>)
+    requires(std::is_void_v<TCompressMap> || grex::AnyScalarTag<TTag>)
     THES_ALWAYS_INLINE constexpr void compute_impl(TTag tag, Size index) {
       if constexpr (std::is_void_v<TCompressMap>) {
         const Size index1 = index + idxs_.begin_value();
-        const auto sol1 = grex::load_ptr(sol_.data() + index1, tag);
+        const auto sol1 = grex::load(sol_.data() + index1, tag);
         const Size index2 = index1 + nb_offset_;
-        const auto sol2 = grex::load_ptr(sol_.data() + index2, tag);
+        const auto sol2 = grex::load(sol_.data() + index2, tag);
 
         thread_sum_ += valuator_.diffusion_coeff(index1, index2, tag) * (sol2 - sol1);
       } else {
-        static_assert(grex::ScalarTag<decltype(tag)>);
+        static_assert(grex::AnyScalarTag<decltype(tag)>);
 
         const Size index1 = index + idxs_.begin_value();
         const auto key1 = compress_map_[index1];
@@ -326,9 +326,8 @@ struct EffDiffCalc {
     return out / (info.solution_end() - info.solution_start());
   }
 
-  auto operator()(const auto& valuator, const AnyVector auto& solution,
-                  const auto& executor) const {
-    return (*this)(valuator, thes::Empty{}, solution, executor);
+  auto operator()(const auto& valuator, const AnyVector auto& solution, const Env auto& env) const {
+    return (*this)(valuator, thes::Empty{}, solution, env);
   }
 
 private:

@@ -7,12 +7,26 @@
 #ifndef INCLUDE_LINEAL_PARALLEL_DISTRIBUTED_INFO_OPERATION_HPP
 #define INCLUDE_LINEAL_PARALLEL_DISTRIBUTED_INFO_OPERATION_HPP
 
+#include <cassert>
+
+#include "thesauros/static-ranges.hpp"
 #include "thesauros/utility.hpp"
 
 namespace lineal {
-inline constexpr decltype(auto) distributed_info_storage(const auto& something) {
+constexpr decltype(auto) distributed_info_storage(const auto& something) {
   if constexpr (requires { something.distributed_info(); }) {
     return something.distributed_info();
+  } else {
+    return thes::Empty{};
+  }
+}
+template<typename... Ts>
+constexpr decltype(auto) unique_distributed_info_storage(const Ts&... something) {
+  if constexpr ((... || requires { something.distributed_info(); })) {
+    auto opt_dist_info =
+      std::make_tuple(&something.distributed_info()...) | thes::star::unique_value;
+    assert(opt_dist_info.has_value());
+    return **opt_dist_info;
   } else {
     return thes::Empty{};
   }

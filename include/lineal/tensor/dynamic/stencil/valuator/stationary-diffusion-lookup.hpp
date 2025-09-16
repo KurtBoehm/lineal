@@ -82,57 +82,57 @@ struct StationaryDiffusionLookupValuator : public ValuatorBase, public TDefs {
 
   THES_ALWAYS_INLINE auto diffusion_coeff(Size from, Size to, grex::AnyTag auto tag) const {
     auto* ptr = material_.data() + data_offset_;
-    const auto mat_from = grex::convert_safe<RealSize>(grex::load_ptr(ptr + from, tag), tag);
-    const auto mat_to = grex::convert_safe<RealSize>(grex::load_ptr(ptr + to, tag), tag);
-    return grex::lookup(mat_from * max_material_num + mat_to, std::span{diffusion_factor_lookup_},
+    const auto mat_from = grex::convert_safe<RealSize>(grex::load(ptr + from, tag));
+    const auto mat_to = grex::convert_safe<RealSize>(grex::load(ptr + to, tag));
+    return grex::gather(std::span{diffusion_factor_lookup_}, mat_from * max_material_num + mat_to,
                         tag);
   }
 
-  THES_ALWAYS_INLINE bool is_filled(Size idx, grex::Scalar /*tag*/) const {
+  THES_ALWAYS_INLINE bool is_filled(Size idx, grex::ScalarTag /*tag*/) const {
     auto* ptr = material_.data() + data_offset_;
     return filled_lookup_[ptr[idx]];
   }
   THES_ALWAYS_INLINE auto is_filled_num(Size idx, grex::AnyTag auto tag) const {
     auto* ptr = material_.data() + data_offset_;
-    const auto mat = grex::load_ptr(ptr + idx, tag);
-    return grex::lookup(mat, std::span{filled_num_lookup_}, tag);
+    const auto mat = grex::load(ptr + idx, tag);
+    return grex::gather(std::span{filled_num_lookup_}, mat, tag);
   }
 
   THES_ALWAYS_INLINE auto cell_value(auto idx, grex::AnyTag auto tag) const {
-    return grex::lookup(idx, std::span{coeffs()}, tag);
+    return grex::gather(std::span{coeffs()}, idx, tag);
   }
 
   THES_ALWAYS_INLINE auto diagonal_base(auto /*cell_value*/, auto tag) const {
-    return grex::constant<Real>(0, tag);
+    return grex::zeros<Real>(tag);
   }
 
   template<std::size_t tDim, AxisSide tSide>
   THES_ALWAYS_INLINE auto border_diagonal_summand(auto cell_value, auto tag) const {
     static_assert(non_zero_borders | thes::star::contains(tDim));
-    return grex::constant<Real>(2 * sys_info_.axis_quotient(thes::index_tag<tDim>), tag) *
+    return grex::broadcast<Real>(2 * sys_info_.axis_quotient(thes::index_tag<tDim>), tag) *
            cell_value;
   }
   template<std::size_t tDim, AxisSide tSide>
   THES_ALWAYS_INLINE auto border_rhs_summand(auto cell_value, auto tag) const {
     static_assert(non_zero_borders | thes::star::contains(tDim));
     auto out =
-      grex::constant<Real>(2 * sys_info_.axis_quotient(thes::index_tag<tDim>), tag) * cell_value;
+      grex::broadcast<Real>(2 * sys_info_.axis_quotient(thes::index_tag<tDim>), tag) * cell_value;
     if constexpr (tSide == AxisSide::START) {
-      out *= grex::constant<Real>(sys_info_.solution_start(), tag);
+      out *= grex::broadcast<Real>(sys_info_.solution_start(), tag);
     } else {
-      out *= grex::constant<Real>(sys_info_.solution_end(), tag);
+      out *= grex::broadcast<Real>(sys_info_.solution_end(), tag);
     }
     return out;
   }
 
   template<std::size_t tDim, AxisSide tSide>
   THES_ALWAYS_INLINE auto connection_value(auto from_cell_info, auto to_cell_info, auto tag) const {
-    auto from_extended = grex::convert_safe<RealSize>(from_cell_info, tag);
-    auto to_extended = grex::convert_safe<RealSize>(to_cell_info, tag);
-    const auto size_tag = tag.cast(thes::type_tag<RealSize>);
-    return grex::lookup(from_extended * grex::constant<RealSize>(max_material_num, size_tag) +
-                          to_extended,
-                        std::span{std::get<tDim>(connection_lookup_)}, tag);
+    auto from_extended = grex::convert_safe<RealSize>(from_cell_info);
+    auto to_extended = grex::convert_safe<RealSize>(to_cell_info);
+    const auto size_tag = tag.cast(grex::type_tag<RealSize>);
+    return grex::gather(
+      std::span{std::get<tDim>(connection_lookup_)},
+      from_extended * grex::broadcast<RealSize>(max_material_num, size_tag) + to_extended, tag);
   }
 
   template<std::size_t tDim, AxisSide tSide>
@@ -146,8 +146,8 @@ struct StationaryDiffusionLookupValuator : public ValuatorBase, public TDefs {
 
   THES_ALWAYS_INLINE auto diagonal(auto diagonal_sum, auto tag) const {
     if constexpr (zero_to_one) {
-      return grex::select(diagonal_sum == grex::constant<Real>(0, tag),
-                          grex::constant<Real>(1, tag), diagonal_sum, tag);
+      return grex::blend(diagonal_sum != grex::zeros<Real>(tag), grex::broadcast<Real>(1, tag),
+                         diagonal_sum);
     } else {
       return diagonal_sum;
     }

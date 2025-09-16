@@ -38,13 +38,13 @@ tests = {
   'tensor-io': [],
 }
 
-foreach name, deps : tests
+foreach name, dummy : tests
   foreach arch : arches
     exe = executable(
       f'test-@name@-@arch@',
       [f'@name@.cpp'],
       cpp_args: args + [f'-march=@arch@'],
-      dependencies: test_deps + deps,
+      dependencies: test_deps,
     )
 
     space_name = name.replace('-', ' ')

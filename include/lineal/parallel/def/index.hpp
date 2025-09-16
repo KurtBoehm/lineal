@@ -21,8 +21,8 @@ struct DistributedIndexKindTag {
 };
 
 template<DistributedIndexKind tKind1, DistributedIndexKind tKind2>
-inline constexpr bool operator==(DistributedIndexKindTag<tKind1> /*tag1*/,
-                                 DistributedIndexKindTag<tKind2> /*tag2*/) {
+constexpr bool operator==(DistributedIndexKindTag<tKind1> /*tag1*/,
+                          DistributedIndexKindTag<tKind2> /*tag2*/) {
   return tKind1 == tKind2;
 }
 

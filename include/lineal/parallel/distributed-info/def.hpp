@@ -29,7 +29,7 @@ concept HasDistributedInfo = requires(const T& v) { v.distributed_info(); };
 template<typename... Ts>
 concept HaveDistributedInfo = (... && HasDistributedInfo<Ts>);
 
-template<typename TDistInfo, typename TFallback>
+template<OptDistributedInfo TDistInfo, typename TFallback>
 struct DistributedSizesTrait {
   using DistInfo = std::decay_t<TDistInfo>;
   using LocalSize = DistInfo::LocalSize;
@@ -40,9 +40,9 @@ struct DistributedSizesTrait<void, TFallback> {
   using LocalSize = TFallback;
   using GlobalSize = TFallback;
 };
-template<typename TDistInfo, typename TFallback>
+template<OptDistributedInfo TDistInfo, typename TFallback>
 using LocalSizeOf = DistributedSizesTrait<TDistInfo, TFallback>::LocalSize;
-template<typename TDistInfo, typename TFallback>
+template<OptDistributedInfo TDistInfo, typename TFallback>
 using GlobalSizeOf = DistributedSizesTrait<TDistInfo, TFallback>::GlobalSize;
 } // namespace lineal
 

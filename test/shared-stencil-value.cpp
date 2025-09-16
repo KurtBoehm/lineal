@@ -7,5 +7,5 @@
 #include "shared-stencil.hpp"
 
 int main() {
-  test::run<test::LinearSystemKind::VALUE_STENCIL>();
+  test::run<test::LinearSystemKind::value_stencil>();
 }

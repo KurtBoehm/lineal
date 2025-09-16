@@ -43,8 +43,8 @@ static auto make_expo(TThreadNum thread_num = {}, TTiling tiling = {}) {
   using Executor = decltype(mkexec());
   using TileSizes =
     std::conditional_t<tiling, thes::star::Constant<3, thes::ValueTag<Size, 8>>, void>;
-  using ExPo = lineal::AdaptivePolicy<Executor, TileSizes,
-                                      grex::VectorSize<grex::max_vector_bytes / sizeof(Real)>{}>;
+  using ExPo =
+    lineal::AdaptivePolicy<Executor, TileSizes, grex::full_tag<grex::native_sizes<Real>.back()>>;
   return ExPo{std::in_place, mkexec, std::nullopt};
 }
 

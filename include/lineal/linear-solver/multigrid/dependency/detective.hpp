@@ -43,13 +43,13 @@ struct DependencyDetectiveThreadInstance
       : Parent(prop_graph),
         criterion_instance_{std::forward<TCriterionInstance>(criterion_instance)} {}
 
-  void compute_base(grex::Scalar /*tag*/, auto&& vertex) {
+  void compute_base(grex::ScalarTag /*tag*/, auto&& vertex) {
     criterion_instance_.handle(vertex, std::memory_order_relaxed);
   }
-  THES_ALWAYS_INLINE void compute_impl(grex::Scalar tag, const auto& /*children*/, auto vtx_it) {
+  THES_ALWAYS_INLINE void compute_iter(grex::ScalarTag tag, const auto& /*children*/, auto vtx_it) {
     compute_base(tag, *vtx_it);
   };
-  THES_ALWAYS_INLINE void compute_impl(auto tag, const auto& arg, const auto& /*children*/,
+  THES_ALWAYS_INLINE void compute_base(auto tag, const auto& arg, const auto& /*children*/,
                                        const auto& graph) {
     compute_base(tag, graph.full_vertex_at(arg));
   }
@@ -89,7 +89,7 @@ struct DependencyDetective {
     static constexpr bool is_shared = ThreadInstance::is_shared;
     static constexpr auto exec_constraints = lineal::exec_constraints<TPropertiesGraph>;
 
-    auto thread_instance(const auto& /*info*/, grex::Scalar /*tag*/) {
+    auto thread_instance(const auto& /*info*/, grex::ScalarTag /*tag*/) {
       return ThreadInstance{prop_graph_, criterion_instance_.thread_instance()};
     }
 

@@ -1,6 +1,6 @@
-# Lineal 📏: An Efficient Header-Only C++20 Linear Algebra Library
+# Lineal 📏: An Efficient Header-Only C++23 Linear Algebra Library
 
-**Lineal** (a portmanteau of “Linear Algebra”, but also the measuring and drawing device “ruler” in German) is a C++20 linear algebra library designed to solve large sparse linear systems arising from PDE discretization on attainable hardware by optimizing runtime and, especially, memory consumption.
+**Lineal** (a portmanteau of “Linear Algebra”, but also the measuring and drawing device “ruler” in German) is a C++23 linear algebra library designed to solve large sparse linear systems arising from PDE discretization on attainable hardware by optimizing runtime and, especially, memory consumption.
 To this end, Lineal supports matrix-free linear systems for stencil-based problems, which can store a single value per cell (which can be as little as one byte) to minimize memory use.
 Because of Lineal’s very generic, template-heavy approach in which matrices and vectors are just characterized by a set of members they need to provide (i.e. _named requirements_ in the jargon of the C++ standard), the “matrix-free” matrix and vector classes can be used mostly interchangeably with more traditional CSR matrices or dense vectors.
 

@@ -45,7 +45,7 @@ struct SharedVectorCoarsener {
         : fine_vector_(std::forward<TVec>(fine_vector)),
           aggregates_map_(std::forward<TAggMap>(aggregates_map)) {}
 
-    THES_ALWAYS_INLINE constexpr TReal compute_impl(grex::Scalar /*tag*/, Size index) const {
+    THES_ALWAYS_INLINE constexpr TReal compute_impl(grex::ScalarTag /*tag*/, Size index) const {
       TReal sum = 0;
       for (decltype(auto) vertex :
            aggregates_map_.coarse_row_to_fine_rows(Aggregate{Index{index}})) {
@@ -117,20 +117,18 @@ struct SharedVectorRefiner {
         : coarse_vector_(std::forward<TVec>(coarse_vector)),
           aggregates_map_(std::forward<TAggMap>(aggregates_map)) {}
 
-    THES_ALWAYS_INLINE constexpr auto compute_impl(grex::Scalar /*tag*/,
+    THES_ALWAYS_INLINE constexpr auto compute_impl(grex::ScalarTag /*tag*/,
                                                    AnyTypedIndex<Size, GlobalSize> auto idx) const {
       const auto aggregate =
         aggregates_map_[index_value(idx, own_index_tag, derived().distributed_info_storage())];
       return aggregate.is_aggregate() ? coarse_vector_[aggregate.index()] : 0;
     }
-    THES_ALWAYS_INLINE constexpr auto compute_impl(grex::VectorTag auto tag,
+    THES_ALWAYS_INLINE constexpr auto compute_impl(grex::AnyVectorTag auto tag,
                                                    AnyTypedIndex<Size, GlobalSize> auto idx) const {
-      using ValueIdx = grex::FloatSize<VecReal>;
-
       const auto agg = aggregates_map_.load(
         index_value(idx, own_index_tag, derived().distributed_info_storage()), tag);
-      const auto is_agg = grex::convert_safe<ValueIdx>(agg.is_aggregate(), tag);
-      return grex::lookup_masked(is_agg, *agg, std::as_const(coarse_vector_).span(), tag);
+      const auto is_agg = grex::convert_safe<VecReal>(agg.is_aggregate());
+      return grex::mask_gather(std::as_const(coarse_vector_).span(), is_agg, *agg, tag);
     }
 
     THES_ALWAYS_INLINE constexpr const TVec& coarse_vector() const {

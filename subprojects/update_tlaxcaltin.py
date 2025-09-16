@@ -32,7 +32,7 @@ project_path = subprojects_path.parent
 assert Path.cwd() == project_path
 
 
-def expand_selection(selection: set[str]):
+def expand_selection(selection: set[str]) -> set[str]:
     new_selection: set[str] = set()
     for s in selection:
         new_selection.add(s)

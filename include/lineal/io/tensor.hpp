@@ -46,8 +46,7 @@ struct SmfReader {
   }
 
   TMat read() && {
-    using thes::f64;
-    using thes::u64;
+    using namespace thes::primitives;
 
     typename TMat::RowWiseBuilder builder{};
     builder.initialize(*thes::safe_cast<Size>(row_num_), *thes::safe_cast<Size>(col_num_),
@@ -74,8 +73,7 @@ struct SmfReader {
   }
 
   TMat read(const Env auto& env) && {
-    using thes::f64;
-    using thes::u64;
+    using namespace thes::primitives;
 
     const auto size = *thes::safe_cast<Size>(row_num_);
     decltype(auto) expo = env.execution_policy();
@@ -143,8 +141,7 @@ struct SmfWriter {
 
   template<SharedMatrix TMat>
   void write(const TMat& mat) && {
-    using thes::f64;
-    using thes::u64;
+    using namespace thes::primitives;
 
     constexpr bool has_non_zero_num = requires { mat.non_zero_num(); };
 
@@ -229,7 +226,8 @@ struct DvfReader {
       size,
       [this, &vec](std::size_t /*tidx*/, Size idx0, Size idx1) {
         thes::FileReader thread_reader{path_};
-        thread_reader.seek(*thes::safe_cast<long>(data_off + idx0 * 8), thes::Seek::set);
+        const std::size_t offset = data_off + std::size_t{idx0} * 8;
+        thread_reader.seek(*thes::safe_cast<long>(offset), thes::Seek::set);
 
         for (auto& v : std::ranges::subrange(vec.begin() + idx0, vec.begin() + idx1)) {
           v = thread_reader.read(thes::type_tag<thes::f64>);
@@ -251,8 +249,7 @@ struct DvfWriter {
 
   template<SharedVector TVec>
   void write(const TVec& vec) && {
-    using thes::f64;
-    using thes::u64;
+    using namespace thes::primitives;
 
     writer_.write(u64{vec.size()});
     for (auto v : vec) {

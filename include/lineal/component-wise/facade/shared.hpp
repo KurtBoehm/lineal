@@ -62,7 +62,7 @@ struct NullDefs {
     };
 
     static constexpr Value deref(auto& self) {
-      return self.derived_->compute_impl(grex::Scalar{}, TIdx{self.index_});
+      return self.derived_->compute_impl(grex::scalar_tag, TIdx{self.index_});
     }
     template<typename TSelf>
     static thes::TransferConst<TSelf, Size>& state(TSelf& self) {
@@ -136,11 +136,10 @@ struct DefaultDefs {
     static constexpr Value deref(auto& self) {
       return self.iterators_ | thes::star::apply([&](auto&... iters) {
                if constexpr (has_real) {
-                 return self.derived_->compute_impl(
-                   grex::Scalar{}, *self.children_,
-                   grex::convert_unsafe<Work>(*iters, grex::Scalar{})...);
+                 return self.derived_->compute_val(grex::scalar_tag, *self.children_,
+                                                   grex::convert_unsafe<Work>(*iters)...);
                } else {
-                 return self.derived_->compute_impl(grex::Scalar{}, *self.children_, iters...);
+                 return self.derived_->compute_iter(grex::scalar_tag, *self.children_, iters...);
                }
              });
     }
@@ -213,16 +212,16 @@ public:
     struct HasAtImpl;
     template<grex::AnyTag TTag, typename... TIters>
     struct HasAtImpl<TTag, thes::Tuple<TIters...>, true> {
-      static constexpr bool value = requires(CDerived& derived, CChildren& children, TTag tag,
-                                             TIters&... iters) {
-        derived.compute_impl(tag, children, grex::convert_unsafe<Work>(iters.compute(tag), tag)...);
-      };
+      static constexpr bool value =
+        requires(CDerived& derived, CChildren& children, TTag tag, TIters&... iters) {
+          derived.compute_val(tag, children, grex::convert_unsafe<Work>(iters.compute(tag))...);
+        };
     };
     template<grex::AnyTag TTag, typename... TIters>
     struct HasAtImpl<TTag, thes::Tuple<TIters...>, false> {
       static constexpr bool value =
         requires(CDerived& derived, CChildren& children, TTag tag, TIters&... iters) {
-          derived.compute_impl(tag, children, iters...);
+          derived.compute_iter(tag, children, iters...);
         };
     };
     template<grex::AnyTag TTag>
@@ -231,10 +230,10 @@ public:
     {
       return self.iterators_ | thes::star::apply([&](auto&... iters) THES_ALWAYS_INLINE {
                if constexpr (has_real) {
-                 return self.derived_->compute_impl(
-                   tag, *self.children_, grex::convert_unsafe<Work>(iters.compute(tag), tag)...);
+                 return self.derived_->compute_val(
+                   tag, *self.children_, grex::convert_unsafe<Work>(iters.compute(tag))...);
                } else {
-                 return self.derived_->compute_impl(tag, *self.children_, iters...);
+                 return self.derived_->compute_iter(tag, *self.children_, iters...);
                }
              });
     }
@@ -333,12 +332,12 @@ struct SharedNullaryCwOpBase
   THES_ALWAYS_INLINE Value operator[](auto index) const
   requires(supports_const_access)
   {
-    return at_impl(*this, index, grex::Scalar{});
+    return at_impl(*this, index, grex::scalar_tag);
   }
   THES_ALWAYS_INLINE Value operator[](auto index)
   requires(supports_mutable_access)
   {
-    return at_impl(*this, index, grex::Scalar{});
+    return at_impl(*this, index, grex::scalar_tag);
   }
 
   THES_ALWAYS_INLINE auto compute(const auto& arg, grex::AnyTag auto tag) const
@@ -599,14 +598,14 @@ private:
   template<typename TSelf, typename TIdx, typename... TOffspring>
   struct HasAtImplScalar<TSelf, TIdx, thes::Tuple<TOffspring...>, true> {
     static constexpr bool value = requires(TSelf& self, TIdx index, TOffspring&... children) {
-      self.derived().compute_impl(grex::Scalar{}, self.children_,
-                                  grex::convert_unsafe<Work>(children[index], grex::Scalar{})...);
+      self.derived().compute_val(grex::scalar_tag, self.children_,
+                                 grex::convert_unsafe<Work>(children[index])...);
     };
   };
   template<typename TSelf, typename TIdx, typename... TOffspring>
   struct HasAtImplScalar<TSelf, TIdx, thes::Tuple<TOffspring...>, false> {
     static constexpr bool value = requires(TSelf& self, TIdx index, TOffspring&... children) {
-      self.derived().compute_impl(grex::Scalar{}, index, self.children_, children...);
+      self.derived().compute_base(grex::scalar_tag, index, self.children_, children...);
     };
   };
   template<typename TSelf, typename TIdx>
@@ -617,11 +616,10 @@ private:
     return iter_children(self) |
            thes::star::apply([&](auto&... children) THES_ALWAYS_INLINE -> decltype(auto) {
              if constexpr (has_real) {
-               return self.derived().compute_impl(
-                 grex::Scalar{}, self.children_,
-                 grex::convert_unsafe<Work>(children[index], grex::Scalar{})...);
+               return self.derived().compute_val(grex::scalar_tag, self.children_,
+                                                 grex::convert_unsafe<Work>(children[index])...);
              } else {
-               return self.derived().compute_impl(grex::Scalar{}, index, self.children_,
+               return self.derived().compute_base(grex::scalar_tag, index, self.children_,
                                                   children...);
              }
            });
@@ -633,15 +631,15 @@ private:
   struct HasAtImplVector<TSelf, TArg, TTag, thes::Tuple<TOffspring...>, true> {
     static constexpr bool value =
       requires(TSelf& self, TArg arg, TTag tag, TOffspring&... children) {
-        self.derived().compute_impl(tag, self.children_,
-                                    grex::convert_unsafe<Work>(children.compute(arg, tag), tag)...);
+        self.derived().compute_val(tag, self.children_,
+                                   grex::convert_unsafe<Work>(children.compute(arg, tag))...);
       };
   };
   template<typename TSelf, typename TArg, grex::AnyTag TTag, typename... TOffspring>
   struct HasAtImplVector<TSelf, TArg, TTag, thes::Tuple<TOffspring...>, false> {
     static constexpr bool value =
       requires(TSelf& self, TArg arg, TTag tag, TOffspring&... children) {
-        self.derived().compute_impl(tag, arg, self.children_, children...);
+        self.derived().compute_base(tag, arg, self.children_, children...);
       };
   };
   template<typename TSelf, typename TArg, grex::AnyTag TTag>
@@ -652,11 +650,10 @@ private:
     return iter_children(self) |
            thes::star::apply([&](auto&... children) THES_ALWAYS_INLINE -> decltype(auto) {
              if constexpr (has_real) {
-               return self.derived().compute_impl(
-                 tag, self.children_,
-                 grex::convert_unsafe<Work>(children.compute(arg, tag), tag)...);
+               return self.derived().compute_val(
+                 tag, self.children_, grex::convert_unsafe<Work>(children.compute(arg, tag))...);
              } else {
-               return self.derived().compute_impl(tag, arg, self.children_, children...);
+               return self.derived().compute_base(tag, arg, self.children_, children...);
              }
            });
   }

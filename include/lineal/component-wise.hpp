@@ -2,6 +2,7 @@
 #define INCLUDE_LINEAL_COMPONENT_WISE_HPP
 
 // IWYU pragma: begin_exports
+#include "component-wise/consumer.hpp"
 #include "component-wise/exec-constraint.hpp"
 #include "component-wise/facade.hpp"
 #include "component-wise/matrix-vector-product.hpp"

@@ -82,7 +82,7 @@ struct LocalMatrixCoarsener {
           thread_instance_.finalize();
         }
 
-        constexpr auto compute_impl(grex::Scalar /*tag*/, Size index) THES_ALWAYS_INLINE {
+        constexpr auto compute_impl(grex::ScalarTag /*tag*/, Size index) THES_ALWAYS_INLINE {
           for (decltype(auto) vertex :
                aggregates_map_.coarse_row_to_fine_rows(Aggregate{RowIdx{index}})) {
             fine_matrix_[vertex].iterate(
@@ -109,7 +109,7 @@ struct LocalMatrixCoarsener {
                    Planner& planner)
           : fine_matrix_(fine_matrix), aggregates_map_(aggregates_map), planner_(planner) {}
 
-      ThreadInstance thread_instance(const auto& thread_info, grex::Scalar /*tag*/) {
+      ThreadInstance thread_instance(const auto& thread_info, grex::ScalarTag /*tag*/) {
         return {thread_info.index(), planner_, fine_matrix_, aggregates_map_};
       }
 
@@ -166,7 +166,7 @@ struct LocalMatrixCoarsener {
           thread_instance_.finalize();
         }
 
-        THES_ALWAYS_INLINE constexpr auto compute_impl(grex::Scalar /*tag*/, Size index) {
+        THES_ALWAYS_INLINE constexpr auto compute_impl(grex::ScalarTag /*tag*/, Size index) {
           for (decltype(auto) vertex :
                aggregates_map_.coarse_row_to_fine_rows(Aggregate{RowIdx{index}})) {
             fine_matrix_[vertex].iterate(
@@ -193,7 +193,7 @@ struct LocalMatrixCoarsener {
                    Builder& builder)
           : fine_matrix_(fine_matrix), aggregates_map_(aggregates_map), builder_(builder) {}
 
-      ThreadInstance thread_instance(const auto& thread_info, grex::Scalar /*tag*/) {
+      ThreadInstance thread_instance(const auto& thread_info, grex::ScalarTag /*tag*/) {
         return {thread_info.index(), builder_, fine_matrix_, aggregates_map_};
       }
 

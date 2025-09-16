@@ -13,7 +13,6 @@
 #include "thesauros/types.hpp"
 
 #include "lineal/math/harmonic-mean.hpp"
-#include "lineal/vectorization.hpp"
 
 namespace lineal {
 struct SymmetricDiffusionLookupProvider {
@@ -28,13 +27,11 @@ struct SymmetricDiffusionLookupProvider {
     const auto diff_from = cell_lookup[flat_idx / max_material_num];
     const auto diff_to = cell_lookup[flat_idx % max_material_num];
 
-    return harmonic_mean(diff_from, diff_to, grex::Scalar{});
+    return harmonic_mean(diff_from, diff_to);
   }
 
   static constexpr auto diffusion_factor_computer() {
-    return [](auto diff_from, auto diff_to, grex::AnyTag auto tag) {
-      return harmonic_mean(diff_from, diff_to, tag);
-    };
+    return [](auto diff_from, auto diff_to) { return harmonic_mean(diff_from, diff_to); };
   }
 };
 
@@ -59,7 +56,7 @@ struct HenryDiffusionLookupProvider {
     const auto factor_from = gaseous_lookup[from_idx] ? henry : Real{1};
     const auto factor_to = gaseous_lookup[to_idx] ? henry : Real{1};
 
-    return harmonic_mean(diff_from * factor_to, diff_to * factor_from, grex::Scalar{});
+    return harmonic_mean(diff_from * factor_to, diff_to * factor_from);
   }
 };
 

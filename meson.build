@@ -1,7 +1,7 @@
-project('lineal', 'cpp', default_options: ['cpp_std=c++20', 'warning_level=3'])
+project('lineal', 'cpp', default_options: ['cpp_std=c++23', 'warning_level=3'])
 
 deps = [
-  dependency('stado'),
+  dependency('grex'),
   dependency('thesauros'),
   dependency('unordered_dense'),
 ]

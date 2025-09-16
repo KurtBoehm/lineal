@@ -167,7 +167,7 @@ struct AdaptivePolicy {
                          con, thes::bool_tag<is_tilable>));
       });
 
-    constexpr bool vectorize = grex::VectorTag<VectorTag> && support_simd && [] {
+    constexpr bool vectorize = grex::AnyVectorTag<VectorTag> && support_simd && [] {
       if constexpr (is_tilable) {
         using Geometry = std::decay_t<decltype(sink.geometry())>;
         using IdxPos = thes::IndexPosition<Index, std::array<Size, Geometry::dimension_num>>;
@@ -185,7 +185,7 @@ struct AdaptivePolicy {
       if constexpr (vectorize) {
         return vector_tag;
       } else {
-        return grex::Scalar{};
+        return grex::scalar_tag;
       }
     }();
 
@@ -247,11 +247,11 @@ struct AdaptivePolicy {
             thes::tiled_for_each<dir>(
               geometry, ranges, tile_dims_, thes::StaticMap{},
               [&](auto idxpos) THES_ALWAYS_INLINE {
-                constexpr grex::GeometryRespectingTag<grex::VectorSize<tag.size>> geo_tag{};
+                constexpr grex::GeometryRespectingTag<grex::FullTag<tag.size>> geo_tag{};
                 thread_sink.compute(idxpos, geo_tag);
               },
               [&](auto idxpos, auto part) THES_ALWAYS_INLINE {
-                const grex::GeometryRespectingTag<grex::VectorPartSize<tag.size>> geo_tag{part};
+                const grex::GeometryRespectingTag<grex::PartTag<tag.size>> geo_tag{part};
                 thread_sink.compute(idxpos, geo_tag);
               },
               thes::index_tag<tag.size>, thes::type_tag<Index>);
@@ -292,13 +292,13 @@ struct AdaptivePolicy {
                 iter.compute(tag);
               }
               if (end_part > 0) {
-                iter.compute(grex::VectorPartSize<tag.size>{end_part});
+                iter.compute(grex::part_tag<tag.size>(end_part));
               }
             } else {
               auto iter = thread_sink.begin() + iter_end_index;
               const auto thread_begin = thread_sink.begin() + begin_idx;
               if (end_part > 0) {
-                iter.compute(grex::VectorPartSize<tag.size>{end_part});
+                iter.compute(grex::part_tag<tag.size>(end_part));
               }
               for (; iter != thread_begin; iter -= tag.size) {
                 assert(iter - thread_sink.begin() <= element_num);

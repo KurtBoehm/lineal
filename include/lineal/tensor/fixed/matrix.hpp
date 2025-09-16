@@ -122,7 +122,7 @@ private:
 };
 
 template<AnyMatrix TMat, typename TFun>
-inline constexpr auto transform(TMat&& mat, TFun&& fun) {
+constexpr auto transform(TMat&& mat, TFun&& fun) {
   return TransformedMatrixView<TMat, TFun>{std::forward<TMat>(mat), std::forward<TFun>(fun)};
 }
 
@@ -332,7 +332,7 @@ private:
 };
 
 template<AnyMatrix TMat>
-inline constexpr auto lower_triangular_view(TMat&& mat) {
+constexpr auto lower_triangular_view(TMat&& mat) {
   return LowerTriangularMatrixView<TMat>{std::forward<TMat>(mat)};
 }
 
@@ -401,7 +401,7 @@ private:
 };
 
 template<AnyMatrix TMat>
-inline constexpr auto transposed(TMat&& mat) {
+constexpr auto transposed(TMat&& mat) {
   return TransposedMatrixView<TMat>{std::forward<TMat>(mat)};
 }
 } // namespace lineal::fix

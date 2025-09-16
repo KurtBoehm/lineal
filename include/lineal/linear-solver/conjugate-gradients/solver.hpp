@@ -86,12 +86,11 @@ struct ConjugateGradientsSolver : public SharedNonStationaryIterativeSolverBase,
           res_norm_sq_ = euclidean_squared<Real>(
             assign_expr(residual_, subtract<Real>(rhs_, multiply<Real>(parent_->lhs_, sol_))),
             expo);
-          assert(std::isfinite(res_norm_sq_));
         } else {
           res_norm_sq_ = euclidean_squared<Real>(
             assign_expr(residual_, subtract<Real>(residual_, scale<Real>(product, alpha))), expo);
-          assert(std::isfinite(res_norm_sq_));
         }
+        assert(std::isfinite(res_norm_sq_));
 
         // This need not be performed before the check in the classic variant of the algorithm,
         // but here we need both the new direction and the new alpha to decide whether we are done!

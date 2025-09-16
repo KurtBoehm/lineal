@@ -28,16 +28,17 @@ inline auto cg(const auto& solver, const AnyMatrix auto& lhs, AnyVector auto& so
     solver, lhs, sol, rhs, std::tuple{}, env,
     [&](auto iter, auto& inst, auto& envi) {
       const auto res = inst.residual_norm();
+      const auto rho = inst.rho();
       THES_ALWAYS_ASSERT(std::isfinite(res));
 
       if constexpr (verbose) {
         envi.log("iteration", iter);
         envi.log("residual", res);
-        envi.log("rho", inst.rho());
+        envi.log("rho", rho);
       }
 
       using Out = std::optional<decltype(res)>;
-      return (iter > iter_num) ? Out{res} : Out{};
+      return (iter > iter_num || rho == 0) ? Out{res} : Out{};
     },
     verbose);
 }
@@ -63,7 +64,7 @@ inline TReal gs(const auto& solver, const AnyMatrix auto& lhs, TSol& sol, const 
 }
 
 template<typename TReal, AnyVector TCoarseVec, AnyMatrix TMat>
-inline TReal chol(const TMat& mat, const auto& wright_instance, auto& env) {
+inline TReal direct(const TMat& mat, const auto& wright_instance, auto& env) {
   const auto& expo = env.execution_policy();
 
   auto hierarchy = wright_instance.create(mat, env);
@@ -79,12 +80,12 @@ inline TReal chol(const TMat& mat, const auto& wright_instance, auto& env) {
   return max_norm<TReal>(sol - sol_ref, expo);
 }
 
-template<typename TDefs, thes::AnyBoolTag TVerbose = thes::BoolTag<false>>
+template<typename TDefs, SorVariant tSorVariant, thes::AnyBoolTag TVerbose = thes::BoolTag<false>>
 inline void suite(const auto& lhs, auto& sol, const auto& rhs, const auto& wright_instance,
                   auto& env, auto op, TVerbose verbose = {}) {
   using Real = TDefs::Real;
   using IterMan = FixedIterationManager;
-  constexpr auto sor_var = SorVariant::ultra;
+  const bool is_symmetric = lhs.is_symmetric() == IsSymmetric{true};
 
   const auto& expo = env.execution_policy();
   auto zero = [&] { assign(sol, constant_like(sol, 0.0), expo); };
@@ -94,7 +95,7 @@ inline void suite(const auto& lhs, auto& sol, const auto& rhs, const auto& wrigh
     return iter > 0 && iter % 8 == 0;
   };
 
-  {
+  if (is_symmetric) {
     auto envi = env.add_object("cg");
     zero();
     ConjugateGradientsSolver solver{thes::type_tag<TDefs>, rere_controller};
@@ -102,37 +103,44 @@ inline void suite(const auto& lhs, auto& sol, const auto& rhs, const auto& wrigh
   }
 
   {
+    auto envi = env.add_object("bicgstab");
+    zero();
+    BiCgStabSolver solver{thes::type_tag<TDefs>, rere_controller};
+    sol_op(cg(solver, lhs, sol, rhs, envi, 128, verbose), envi);
+  }
+
+  {
     auto envi = env.add_object("sor");
     zero();
-    SorSolver<Real, void, forward_tag, sor_var> solver{1.0};
+    SorSolver<Real, void, forward_tag, tSorVariant> solver{1.0};
     sol_op(gs<Real>(solver, lhs, sol, rhs, envi, 128, verbose), envi);
   }
 
   {
     auto envi = env.add_object("ssor1");
     zero();
-    SsorSolver<Real, void, sor_var> solver{1.0};
+    SsorSolver<Real, void, tSorVariant> solver{1.0};
     sol_op(gs<Real>(solver, lhs, sol, rhs, envi, 128, verbose), envi);
   }
 
   {
     auto envi = env.add_object("sor5");
     zero();
-    SorSolver<Real, IterMan, forward_tag, sor_var> solver{1.0, IterMan{5}};
+    SorSolver<Real, IterMan, forward_tag, tSorVariant> solver{1.0, IterMan{5}};
     sol_op(gs<Real>(solver, lhs, sol, rhs, envi, 128, verbose), envi);
   }
 
   {
     auto envi = env.add_object("ssor5");
     zero();
-    SsorSolver<Real, IterMan, sor_var> solver{1.0, IterMan{5}};
+    SsorSolver<Real, IterMan, tSorVariant> solver{1.0, IterMan{5}};
     sol_op(gs<Real>(solver, lhs, sol, rhs, envi, 128, verbose), envi);
   }
 
-  {
+  if (is_symmetric) {
     auto envi = env.add_object("pcg_ssor1");
     zero();
-    using Precon = SsorSolver<Real, IterMan, sor_var>;
+    using Precon = SsorSolver<Real, IterMan, tSorVariant>;
     ConjugateGradientsSolver solver{
       thes::type_tag<TDefs>,
       rere_controller,
@@ -142,11 +150,44 @@ inline void suite(const auto& lhs, auto& sol, const auto& rhs, const auto& wrigh
   }
 
   {
+    auto envi = env.add_object("pbicgstab_ssor1");
+    zero();
+    using Precon = SsorSolver<Real, IterMan, tSorVariant>;
+    BiCgStabSolver solver{
+      thes::type_tag<TDefs>,
+      rere_controller,
+      Precon{1.0, IterMan{1}},
+    };
+    sol_op(cg(solver, lhs, sol, rhs, envi, 128, verbose), envi);
+  }
+
+  if (is_symmetric) {
     auto envi = env.add_object("pcg_amg");
     zero();
     MultiGridSolver precon{1.0, DefaultCycle{CycleKind::REGULAR, 1}, wright_instance};
     ConjugateGradientsSolver solver{thes::type_tag<TDefs>, rere_controller, precon};
     sol_op(cg(solver, lhs, sol, rhs, envi, 32, verbose), envi);
+  }
+
+  {
+    auto envi = env.add_object("pbicgstab_amg");
+    zero();
+    MultiGridSolver precon{1.0, DefaultCycle{CycleKind::REGULAR, 1}, wright_instance};
+    BiCgStabSolver solver{thes::type_tag<TDefs>, rere_controller, precon};
+    sol_op(cg(solver, lhs, sol, rhs, envi, 32, verbose), envi);
+  }
+}
+
+template<typename TDefs, thes::AnyBoolTag TVerbose = thes::BoolTag<false>>
+inline void suite(const auto& lhs, auto& sol, const auto& rhs, const auto& wright_instance,
+                  auto& env, auto op, TVerbose verbose = {}) {
+  {
+    auto envi = env.add_object("sor_regular");
+    suite<TDefs, SorVariant::regular>(lhs, sol, rhs, wright_instance, envi, op, verbose);
+  }
+  {
+    auto envi = env.add_object("sor_ultra");
+    suite<TDefs, SorVariant::ultra>(lhs, sol, rhs, wright_instance, envi, op, verbose);
   }
 }
 } // namespace lineal::test

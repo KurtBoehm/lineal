@@ -7,7 +7,6 @@
 #ifndef INCLUDE_LINEAL_LINEAR_SOLVER_MULTIGRID_HIERARCHY_WRIGHT_HPP
 #define INCLUDE_LINEAL_LINEAR_SOLVER_MULTIGRID_HIERARCHY_WRIGHT_HPP
 
-#include <concepts>
 #include <cstddef>
 #include <exception>
 #include <tuple>
@@ -102,6 +101,19 @@ struct HierarchyWrightInstance {
     });
   }
 
+  const TMatAggregator& matrix_aggregator() const {
+    return mat_aggregator_;
+  }
+  const TPreSmoother& pre_smoother() const {
+    return pre_smoother_;
+  }
+  const TPostSmoother& post_smoother() const {
+    return post_smoother_;
+  }
+  const TCoarseSolver& coarse_solver() const {
+    return coarse_solver_;
+  }
+
 private:
   enum struct CoarsenAction : thes::u8 { CONTINUE, MAKE_AGGRESSIVE, STOP_COARSENING };
 
@@ -178,13 +190,19 @@ private:
     auto stop_coarsening = [&](const AnyMatrix auto& fine_lhs, const TCoarseLhs& coarse_lhs,
                                const auto& envi) {
       switch (level_action(fine_lhs, coarse_lhs, level, is_aggressive, envi)) {
-      case CoarsenAction::CONTINUE: return false;
-      case CoarsenAction::MAKE_AGGRESSIVE: {
-        is_aggressive = true;
-        return false;
-      }
-      case CoarsenAction::STOP_COARSENING: return true;
-      default: std::terminate();
+        case CoarsenAction::CONTINUE: {
+          return false;
+        }
+        case CoarsenAction::MAKE_AGGRESSIVE: {
+          is_aggressive = true;
+          return false;
+        }
+        case CoarsenAction::STOP_COARSENING: {
+          return true;
+        }
+        default: {
+          std::terminate();
+        }
       }
     };
 

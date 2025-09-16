@@ -22,7 +22,7 @@ struct CellStorage {
   using Value = T;
   using Size = std::size_t;
   using Alloc = TAlloc;
-  static constexpr std::size_t max_vector_size = grex::max_vector_bytes;
+  static constexpr std::size_t max_vector_size = grex::register_bytes.back();
 
   using Data = thes::array::TypedChunk<Value, Size, Alloc>;
   using iterator = Value*;

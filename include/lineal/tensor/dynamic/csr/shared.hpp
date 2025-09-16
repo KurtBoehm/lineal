@@ -7,10 +7,12 @@
 #ifndef INCLUDE_LINEAL_TENSOR_DYNAMIC_CSR_SHARED_HPP
 #define INCLUDE_LINEAL_TENSOR_DYNAMIC_CSR_SHARED_HPP
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <memory>
 #include <optional>
+#include <ranges>
 #include <span>
 #include <type_traits>
 #include <utility>
@@ -47,13 +49,14 @@ struct CsrMatrixBase : public SharedMatrixBase {
 
   using NonZeroSizeByte = Defs::NonZeroSizeByte;
   using NonZeroSize = NonZeroSizeByte::Unsigned;
-  using RowOffsets = thes::MultiByteIntegers<NonZeroSizeByte, grex::max_vector_bytes, ByteAlloc>;
+  using RowOffsets =
+    thes::MultiByteIntegers<NonZeroSizeByte, grex::register_bytes.back(), ByteAlloc>;
   using RowOffsetsIter = RowOffsets::iterator;
   using RowOffsetsConstIter = RowOffsets::const_iterator;
 
   using SizeByte = Defs::SizeByte;
   using Size = SizeByte::Unsigned;
-  using Sizes = thes::MultiByteIntegers<SizeByte, grex::max_vector_bytes, ByteAlloc>;
+  using Sizes = thes::MultiByteIntegers<SizeByte, grex::register_bytes.back(), ByteAlloc>;
   using GlobalSize = GlobalSizeOf<DistributedInfo, Size>;
   using ColumnIndices = Sizes;
   using ColumnIndexIter = ColumnIndices::iterator;
@@ -64,7 +67,7 @@ struct CsrMatrixBase : public SharedMatrixBase {
   using ColumnIdx = ExtRowIdx;
 
   using Entries = thes::DynamicArray<Value, thes::DefaultInit, thes::DoublingGrowth, Alloc>;
-  static constexpr std::size_t entry_pad = grex::max_vector_bytes / sizeof(Value);
+  static constexpr std::size_t entry_pad = grex::native_sizes<Value>.back();
 
 private:
   struct ColIterProvider {
@@ -145,6 +148,10 @@ public:
       return ColumnIdx{col_it_[s - 1]};
     }
 
+    auto column_indices() const {
+      return std::ranges::subrange{col_it_, col_it_ + size()};
+    }
+
     const_iterator find(const ColumnIdx i) const {
       return iter_at_index(*this, i);
     }
@@ -210,20 +217,19 @@ public:
       for (Size i = 0; i < vnum; i += vsize) {
         const auto idxs = grex::load_multibyte(cit + i, vtag);
         if constexpr (is_valued) {
-          const auto vals = grex::load_ptr(vit + i, vtag);
+          const auto vals = grex::load(vit + i, vtag);
           op(idxs, vals, vtag);
         } else {
           op(idxs, vtag);
         }
       }
       if (vnum != size) {
-        const grex::VectorPartSize<vsize> ptag{size - vnum};
         const auto idxs = grex::load_multibyte(cit + vnum, vtag);
         if constexpr (is_valued) {
-          const auto vals = grex::load_ptr(vit + vnum, vtag);
-          op(idxs, vals, ptag);
+          const auto vals = grex::load(vit + vnum, vtag);
+          op(idxs, vals, grex::part_tag<vsize>(size - vnum));
         } else {
-          op(idxs, ptag);
+          op(idxs, grex::part_tag<vsize>(size - vnum));
         }
       }
     }
@@ -554,8 +560,8 @@ public:
         .get(thes::auto_tag<TIndex{}>);
 
     struct Data {
-      explicit Data(std::size_t p_thread_num, IsSymmetric is_symmetric)
-          : thread_num(p_thread_num), is_symmetric(is_symmetric), row_nums(p_thread_num),
+      explicit Data(std::size_t p_thread_num, IsSymmetric p_is_symmetric)
+          : thread_num(p_thread_num), is_symmetric(p_is_symmetric), row_nums(p_thread_num),
             non_zero_nums(p_thread_num) {}
 
       std::size_t thread_num;
@@ -687,9 +693,10 @@ public:
     using ColumnIndexIter = ColumnIndices::iterator;
 
     struct Data {
-      Data(IsSymmetric is_symmetric, Size p_row_num, NonZeroSize p_non_zero_cnt, Sizes&& p_row_nums,
-           RowOffsets&& p_non_zero_nums, thes::VoidStorageRvalRef<DistributedInfo> p_dist_info)
-          : is_symmetric(is_symmetric), row_num(p_row_num), row_nums(std::move(p_row_nums)),
+      Data(IsSymmetric p_is_symmetric, Size p_row_num, NonZeroSize p_non_zero_cnt,
+           Sizes&& p_row_nums, RowOffsets&& p_non_zero_nums,
+           thes::VoidStorageRvalRef<DistributedInfo> p_dist_info)
+          : is_symmetric(p_is_symmetric), row_num(p_row_num), row_nums(std::move(p_row_nums)),
             non_zero_nums(std::move(p_non_zero_nums)), row_offs(p_row_num + 1),
             col_idxs(p_non_zero_cnt), entries(p_non_zero_cnt + entry_pad),
             dist_info(std::forward<DistributedInfoStorage>(p_dist_info)) {}
@@ -830,6 +837,7 @@ public:
 
     // This version assumes that the matrix is square!
     Matrix build() && {
+
       assert(data_.has_value());
       Data& data = *data_;
 

@@ -40,7 +40,7 @@ struct BaseMultithreadAggregateMap {
 
   using Offsets = thes::FixedArray<Size, thes::DefaultInit, Alloc<Size>>;
   using VertexToAggregateMap =
-    thes::MultiByteIntegers<SizeByte, grex::max_vector_bytes, TByteAlloc>;
+    thes::MultiByteIntegers<SizeByte, grex::register_bytes.back(), TByteAlloc>;
   using AggregateIndexIter = VertexToAggregateMap::const_iterator;
   using AggregateToVertexMap = thes::NestedDynamicArray<Size, Size, Alloc<Size>>;
   using AggregateToVertexBuilder = AggregateToVertexMap::NestedBuilder;
@@ -55,7 +55,7 @@ struct BaseMultithreadAggregateMap {
     using Ref = IterTypes::IterRef;
 
     static Ref deref(const auto& self) {
-      return Aggregate(*self.iter_);
+      return Aggregate{Index{*self.iter_}};
     }
     template<typename TSelf>
     static thes::TransferConst<TSelf, State>& state(TSelf& self) {

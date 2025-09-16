@@ -319,14 +319,14 @@ struct BaseAggregator {
   };
 
   // Count the number of neighbours that belong to the aggregate front.
-  struct FrontNeighbourCounter {
-    explicit FrontNeighbourCounter(const AggregateManager& agg_man) : agg_man_{agg_man} {}
+  struct FrontNeighborCounter {
+    explicit FrontNeighborCounter(const AggregateManager& agg_man) : agg_man_{agg_man} {}
 
     // Increment if the head of the edge is part of the aggregate front.
     void operator()(const EdgeInfo& ei) THES_ALWAYS_INLINE {
       counter_ += Size{agg_man_.is_front(ei.edge.head().index())};
     }
-    [[nodiscard]] Size value(const Size /*neighbour_num*/) const THES_ALWAYS_INLINE {
+    [[nodiscard]] Size value(const Size /*neighbor_num*/) const THES_ALWAYS_INLINE {
       return counter_;
     }
 
@@ -343,7 +343,7 @@ struct BaseAggregator {
     void operator()(const EdgeInfo& ei) THES_ALWAYS_INLINE {
       counter_ += Size{ei.head_in_aggregate() && ei.edge_props.is_two_way()};
     }
-    [[nodiscard]] Size value(const Size /*neighbour_num*/) const THES_ALWAYS_INLINE {
+    [[nodiscard]] Size value(const Size /*neighbor_num*/) const THES_ALWAYS_INLINE {
       return counter_;
     }
 
@@ -359,7 +359,7 @@ struct BaseAggregator {
     void operator()(const EdgeInfo& ei) THES_ALWAYS_INLINE {
       counter_ += Size{ei.head_in_aggregate() && ei.edge_props.is_one_way()};
     }
-    [[nodiscard]] Size value(const Size /*neighbour_num*/) const THES_ALWAYS_INLINE {
+    [[nodiscard]] Size value(const Size /*neighbor_num*/) const THES_ALWAYS_INLINE {
       return counter_;
     }
 
@@ -375,7 +375,7 @@ struct BaseAggregator {
     void operator()(const EdgeInfo& ei) THES_ALWAYS_INLINE {
       counter_ += Size{ei.head_in_aggregate() && ei.edge_props.depends()};
     }
-    [[nodiscard]] Size value(const Size /*neighbour_num*/) const THES_ALWAYS_INLINE {
+    [[nodiscard]] Size value(const Size /*neighbor_num*/) const THES_ALWAYS_INLINE {
       return counter_;
     }
 
@@ -403,8 +403,8 @@ struct BaseAggregator {
         Size{ei.head_aggregate.is_aggregate() && agg_man_.is_connected(ei.head_aggregate)};
     }
     // The value of the counter divided by the number of neighbours.
-    [[nodiscard]] double value(const Size neighbour_num) const THES_ALWAYS_INLINE {
-      return double(counter_) / double(neighbour_num);
+    [[nodiscard]] double value(const Size neighbor_num) const THES_ALWAYS_INLINE {
+      return double(counter_) / double(neighbor_num);
     }
 
   private:
@@ -412,14 +412,14 @@ struct BaseAggregator {
     const AggregateManager& agg_man_;
   };
 
-  struct AggregateNeighboursCounter {
-    AggregateNeighboursCounter() = default;
+  struct AggregateNeighborsCounter {
+    AggregateNeighborsCounter() = default;
 
     // Increments the counter if the head of the edge is in the aggregate being built.
     void operator()(const EdgeInfo& ei) THES_ALWAYS_INLINE {
       counter_ += Size{ei.head_in_aggregate()};
     }
-    [[nodiscard]] Size value(const Size /*neighbour_num*/) const THES_ALWAYS_INLINE {
+    [[nodiscard]] Size value(const Size /*neighbor_num*/) const THES_ALWAYS_INLINE {
       return counter_;
     }
 
@@ -427,8 +427,8 @@ struct BaseAggregator {
     Size counter_{0};
   };
 
-  struct UnaggregatedNeighboursCounter {
-    UnaggregatedNeighboursCounter() = default;
+  struct UnaggregatedNeighborsCounter {
+    UnaggregatedNeighborsCounter() = default;
 
     // Increments the counter if the head of the edge is aggregated and its aggregate is connected
     // to the current aggregate.
@@ -437,7 +437,7 @@ struct BaseAggregator {
     }
 
     // The value of the counter.
-    [[nodiscard]] Size value(const Size /*neighbour_num*/) const THES_ALWAYS_INLINE {
+    [[nodiscard]] Size value(const Size /*neighbor_num*/) const THES_ALWAYS_INLINE {
       return counter_;
     }
 
@@ -472,9 +472,9 @@ struct BaseAggregator {
     // Applies each functor in args to the EdgeInfo created from each outgoing edge of vertex.
     // Returns a tuple of the values returned by the value function of each functor
     // after visiting each outgoing edge of vertex.
-    THES_ALWAYS_INLINE auto apply_neighbours(const FullVertex& vertex,
-                                             const AggregateManager& aggregate,
-                                             auto&& counters) const {
+    THES_ALWAYS_INLINE auto apply_neighbors(const FullVertex& vertex,
+                                            const AggregateManager& aggregate,
+                                            auto&& counters) const {
       vertex.iterate(
         thes::NoOp{},
         [&, agg = aggregate.aggregate()](auto edge) THES_ALWAYS_INLINE {
@@ -522,7 +522,7 @@ struct BaseAggregator {
      *    If neither is the case, the algorithm is terminated.
      *  - Next, the candidates with maximal connectivity (`ConnectivityCounter`) are chosen.
      *  - Next, the candidates with the maximal number of neighbours in the front
-     *     (`FrontNeighbourCounter`) are chosen.
+     *     (`FrontNeighborCounter`) are chosen.
      *  - If adding all candidates would make `aggregate` have more elements than
      *    `criterion.maxAggregateSize()`, a sufficient number of elements is removed.
      *
@@ -545,13 +545,13 @@ struct BaseAggregator {
             continue;
           }
 
-          const auto [con, nbs, cons2, cons1] = apply_neighbours(full_vertex, aggregate,
-                                                                 thes::Tuple{
-                                                                   ConnectivityCounter{aggregate},
-                                                                   FrontNeighbourCounter{aggregate},
-                                                                   TwoWayConnectionCounter{},
-                                                                   OneWayConnectionCounter{},
-                                                                 });
+          const auto [con, nbs, cons2, cons1] = apply_neighbors(full_vertex, aggregate,
+                                                                thes::Tuple{
+                                                                  ConnectivityCounter{aggregate},
+                                                                  FrontNeighborCounter{aggregate},
+                                                                  TwoWayConnectionCounter{},
+                                                                  OneWayConnectionCounter{},
+                                                                });
 
           // Logic: If there is any two-way connection, only consider two-way vertices
           // Take the maximum of (cons, con, nbs)
@@ -610,12 +610,12 @@ struct BaseAggregator {
           }
 
           const auto [cons, unaggregated, in_aggregate] =
-            apply_neighbours(full_vertex, aggregate,
-                             thes::Tuple{
-                               AnyWayConnectionCounter{},
-                               UnaggregatedNeighboursCounter{},
-                               AggregateNeighboursCounter{},
-                             });
+            apply_neighbors(full_vertex, aggregate,
+                            thes::Tuple{
+                              AnyWayConnectionCounter{},
+                              UnaggregatedNeighborsCounter{},
+                              AggregateNeighborsCounter{},
+                            });
           if (cons == 0 || unaggregated >= in_aggregate) {
             continue;
           }

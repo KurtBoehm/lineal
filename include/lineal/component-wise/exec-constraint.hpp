@@ -24,8 +24,8 @@ using ForwardIterConstraint = IterationDirectionConstraint<forward_tag>;
 using BackwardIterConstraint = IterationDirectionConstraint<backward_tag>;
 
 template<AnyDirectionTag auto tDir1, AnyDirectionTag auto tDir2>
-inline constexpr bool operator==(IterationDirectionConstraint<tDir1> /*con1*/,
-                                 IterationDirectionConstraint<tDir2> /*con2*/) {
+constexpr bool operator==(IterationDirectionConstraint<tDir1> /*con1*/,
+                          IterationDirectionConstraint<tDir2> /*con2*/) {
   return tDir1 == tDir2;
 }
 

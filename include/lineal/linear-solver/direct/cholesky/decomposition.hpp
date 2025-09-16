@@ -4,8 +4,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-#ifndef INCLUDE_LINEAL_LINEAR_SOLVER_CHOLESKY_DECOMPOSE_HPP
-#define INCLUDE_LINEAL_LINEAR_SOLVER_CHOLESKY_DECOMPOSE_HPP
+#ifndef INCLUDE_LINEAL_LINEAR_SOLVER_DIRECT_CHOLESKY_DECOMPOSITION_HPP
+#define INCLUDE_LINEAL_LINEAR_SOLVER_DIRECT_CHOLESKY_DECOMPOSITION_HPP
 
 #include <cassert>
 
@@ -70,7 +70,7 @@ struct CholeskyDecomposer {
       bool is_first = true;
       Real diag = 0;
       matrix[RowIdx{i}].iterate(
-        [&](ColumnIdx j, Real value) {
+        [&](ColumnIdx j, auto value) {
           const auto jval = index_value(j);
           if (is_first) {
             is_first = false;
@@ -79,11 +79,11 @@ struct CholeskyDecomposer {
               lambda(ColumnIdx{k}, 0);
             }
           }
-          lambda(j, value);
+          lambda(j, Real(value));
           next_start = jval + 1;
         },
-        [&diag](ColumnIdx /*j*/, Real value) THES_ALWAYS_INLINE { diag = value; }, thes::NoOp{},
-        valued_tag, ordered_tag);
+        [&diag](ColumnIdx /*j*/, auto value) THES_ALWAYS_INLINE { diag = Real(value); },
+        thes::NoOp{}, valued_tag, ordered_tag);
       for (const Size j : thes::range(next_start, i)) {
         lambda(ColumnIdx{j}, 0);
       }
@@ -100,9 +100,10 @@ struct CholeskyDecomposer {
 };
 
 template<typename TReal, SharedMatrix TCholeskyMat, SharedMatrix TMat>
-inline constexpr TCholeskyMat cholesky_decompose(const TMat& mat) {
+constexpr TCholeskyMat cholesky_decompose(const TMat& mat) {
   return CholeskyDecomposer<TReal, TMat, TCholeskyMat>::decompose(mat);
 }
+
 } // namespace lineal
 
-#endif // INCLUDE_LINEAL_LINEAR_SOLVER_CHOLESKY_DECOMPOSE_HPP
+#endif // INCLUDE_LINEAL_LINEAR_SOLVER_DIRECT_CHOLESKY_DECOMPOSITION_HPP

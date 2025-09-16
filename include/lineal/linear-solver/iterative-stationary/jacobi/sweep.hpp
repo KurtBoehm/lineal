@@ -68,9 +68,8 @@ struct JacobiSweepSink
     TSolOut& x_out = sol_out();
     Real accum = rhs_val;
 
-    auto update = [&](LocalIdx j, Real aij) THES_ALWAYS_INLINE {
-      accum = grex::fnma(aij, Real(x_in[j]), accum, grex::Scalar{});
-    };
+    auto update = [&](LocalIdx j, Real aij)
+                    THES_ALWAYS_INLINE { accum = grex::fnmadd(aij, Real(x_in[j]), accum); };
     Real diag = std::numeric_limits<Real>::signaling_NaN();
 
     lhs_row.iterate(
@@ -84,27 +83,27 @@ struct JacobiSweepSink
     const LocalIdx i = lhs_row.ext_index();
     assert(std::isfinite(diag));
     const Real quot = accum / diag;
-    x_out[i] = OutValue(grex::fma(relax_, quot, m1_relax_ * Real(x_in[i]), grex::Scalar{}));
+    x_out[i] = OutValue(grex::fmadd(relax_, quot, m1_relax_ * Real(x_in[i])));
   }
 
   template<grex::FullVectorTag TVecTag>
   THES_ALWAYS_INLINE void compute_base_multicolumn(auto row, auto rhs_val, TVecTag ftag) {
     const LocalIdx i = row.ext_index();
-    const auto ivec = grex::constant(index_value(i), ftag);
+    const auto ivec = grex::broadcast(index_value(i), ftag);
 
     const TSolIn& x_in = sol_in();
     TSolOut& x_out = sol_out();
     const Real x_diag(x_in[i]);
 
     const Real rrhs(rhs_val);
-    auto accum_vec = grex::constant(rrhs / ftag.size, ftag);
-    auto dia_vec = grex::constant(Real{0}, ftag);
+    auto accum_vec = grex::broadcast(rrhs / ftag.size, ftag);
+    auto dia_vec = grex::zeros(ftag);
     row.multicolumn_iterate(
       [&](auto j, auto aij, auto vtag) THES_ALWAYS_INLINE {
-        const auto x_vec = grex::convert_unsafe<Real>(x_in.lookup(j, vtag), vtag);
-        const auto aij_real = grex::convert_unsafe<Real>(aij, vtag);
-        accum_vec = grex::fnma(aij_real, x_vec, accum_vec, vtag);
-        dia_vec = grex::select(vtag.mask(j == ivec), aij_real, dia_vec, ftag);
+        const auto x_vec = grex::convert_unsafe<Real>(x_in.lookup(j, vtag));
+        const auto aij_real = grex::convert_unsafe<Real>(aij);
+        accum_vec = grex::fnmadd(aij_real, x_vec, accum_vec);
+        dia_vec = grex::blend(vtag.mask(j == ivec), dia_vec, aij_real);
       },
       valued_tag, unordered_tag, ftag);
 
@@ -112,10 +111,10 @@ struct JacobiSweepSink
     const Real diag = grex::horizontal_add(dia_vec, ftag);
     assert(diag != 0);
     const Real quot = accum / diag;
-    x_out[i] = OutValue(grex::fma(relax_, quot, m1_relax_ * x_diag, grex::Scalar{}));
+    x_out[i] = OutValue(grex::fmadd(relax_, quot, m1_relax_ * x_diag));
   }
 
-  template<grex::VectorTag TVecTag>
+  template<grex::AnyTag TVecTag>
   THES_ALWAYS_INLINE void compute_base_simd(auto row, auto rhs_vec, TVecTag tag) {
     using Vec = grex::Vector<Real, tag.size>;
 
@@ -124,17 +123,17 @@ struct JacobiSweepSink
     TSolOut& x_out = sol_out();
 
     const LocalIdx i = row.ext_index();
-    auto accum = grex::convert_unsafe<Real>(rhs_vec, tag);
+    auto accum = grex::convert_unsafe<Real>(rhs_vec);
 
 #ifdef FINITE_CHECK
 #error "FINITE_CHECK is already defined!"
 #endif
-#define FINITE_CHECK(x) assert(grex::horizontal_and(grex::is_finite(x, tag), tag))
+#define FINITE_CHECK(x) assert(grex::horizontal_and(grex::is_finite(x), tag))
 
     auto update = [&](auto aij, auto vec_vec) THES_ALWAYS_INLINE {
       FINITE_CHECK(aij);
       FINITE_CHECK(vec_vec);
-      accum = grex::fnma(aij, grex::convert_unsafe<Real>(vec_vec, tag), accum, tag);
+      accum = grex::fnmadd(aij, grex::convert_unsafe<Real>(vec_vec), accum);
       FINITE_CHECK(accum);
     };
 
@@ -154,16 +153,17 @@ struct JacobiSweepSink
       unordered_tag, tag);
 
     const Vec quot = accum / diag;
-    const auto x_diag = grex::convert_unsafe<Real>(x_in.compute(i, tag), tag);
-    const auto x = grex::fma(Vec{relax_}, quot, m1_relax_ * x_diag, tag);
-    x_out.store(i, grex::convert_unsafe<OutValue>(x, tag), tag);
+    const auto x_diag = grex::convert_unsafe<Real>(x_in.compute(i, tag));
+    const auto x = grex::fmadd(Vec{relax_}, quot, m1_relax_ * x_diag);
+    x_out.store(i, grex::convert_unsafe<OutValue>(x), tag);
 
 #undef FINITE_CHECK
   }
 
   template<grex::AnyTag TTag>
-  THES_ALWAYS_INLINE void compute_base(auto lhs_off, auto rhs_off, auto rhs_load, TTag tag) {
-    if constexpr (grex::VectorTag<TTag> && grex::is_geometry_respecting<TTag> &&
+  THES_ALWAYS_INLINE void compute_impl(auto lhs_off, auto rhs_off, auto rhs_load, TTag tag) {
+    if constexpr ((grex::AnyScalarTag<TTag> ||
+                   (grex::AnyVectorTag<TTag> && grex::is_geometry_respecting<TTag>)) &&
                   BandedIterable<Lhs, TTag>) {
       compute_base_simd(lhs_off(0), rhs_load(), tag);
     } else {
@@ -172,15 +172,15 @@ struct JacobiSweepSink
     }
   }
 
-  THES_ALWAYS_INLINE void compute_impl(grex::AnyTag auto tag, const auto& /*children*/, auto lhs_it,
+  THES_ALWAYS_INLINE void compute_iter(grex::AnyTag auto tag, const auto& /*children*/, auto lhs_it,
                                        auto rhs_it) {
-    compute_base([&](auto i) THES_ALWAYS_INLINE { return lhs_it[i]; },
+    compute_impl([&](auto i) THES_ALWAYS_INLINE { return lhs_it[i]; },
                  [&](auto i) THES_ALWAYS_INLINE { return rhs_it[i]; },
                  [&]() THES_ALWAYS_INLINE { return rhs_it.compute(tag); }, tag);
   }
-  THES_ALWAYS_INLINE void compute_impl(grex::AnyTag auto tag, const auto& arg,
+  THES_ALWAYS_INLINE void compute_base(grex::AnyTag auto tag, const auto& arg,
                                        const auto& /*children*/, const auto& lhs, const auto& rhs) {
-    compute_base([&](Size i) THES_ALWAYS_INLINE { return lhs[arg + i]; },
+    compute_impl([&](Size i) THES_ALWAYS_INLINE { return lhs[arg + i]; },
                  [&](Size i) THES_ALWAYS_INLINE { return rhs[arg + i]; },
                  [&]() THES_ALWAYS_INLINE { return rhs.compute(arg, tag); }, tag);
   }
@@ -279,6 +279,7 @@ struct JacobiSweep<TDistInfo, TReal, TLhs, TSolIn, TSolOut, TRhs>
     return impl::geometry(this->children());
   }
 };
+
 } // namespace lineal::detail
 
 #endif // INCLUDE_LINEAL_LINEAR_SOLVER_ITERATIVE_STATIONARY_JACOBI_SWEEP_HPP

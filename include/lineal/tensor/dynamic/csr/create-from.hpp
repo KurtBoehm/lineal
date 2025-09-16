@@ -7,6 +7,7 @@
 #ifndef INCLUDE_LINEAL_TENSOR_DYNAMIC_CSR_CREATE_FROM_HPP
 #define INCLUDE_LINEAL_TENSOR_DYNAMIC_CSR_CREATE_FROM_HPP
 
+#include <array>
 #include <cassert>
 #include <concepts>
 #include <cstddef>
@@ -43,7 +44,7 @@ static auto base_csr_from_adjacent_stencil(const TValuator& valuator, auto& dist
 
   using StencilLhs = AdjacentStencilMatrix<const TValuator&>;
   using StencilRhs = AdjacentStencilVector<const TValuator&>;
-  using CompressMap = thes::OptionalMultiByteIntegers<SizeByte, grex::max_vector_bytes>;
+  using CompressMap = thes::OptionalMultiByteIntegers<SizeByte, grex::register_bytes.back()>;
   using ExtRowIdx = StencilLhs::ExtRowIdx;
   using ColIdx = StencilLhs::ColumnIdx;
   static_assert(std::same_as<ExtRowIdx, ColIdx>);
@@ -113,12 +114,12 @@ static auto base_csr_from_adjacent_stencil(const TValuator& valuator, auto& dist
         thread_instance.finalize();
       }
 
-      barriers[0].arrive_and_wait();
+      std::get<0>(barriers).arrive_and_wait();
 
       const ExtRowIdx row_offset = lhs_planner.row_offset(thread_idx);
       const auto non_zero_offset = lhs_planner.non_zero_offset(thread_idx);
 
-      barriers[1].arrive_and_wait();
+      std::get<1>(barriers).arrive_and_wait();
 
       if (thread_idx == 0) {
         if constexpr (!dist_comp) {
@@ -139,7 +140,7 @@ static auto base_csr_from_adjacent_stencil(const TValuator& valuator, auto& dist
         }
       }
 
-      barriers[2].arrive_and_wait();
+      std::get<2>(barriers).arrive_and_wait();
 
       [[maybe_unused]] const auto& dist_info = [&]() -> const auto& {
         if constexpr (dist_comp) {
@@ -160,7 +161,7 @@ static auto base_csr_from_adjacent_stencil(const TValuator& valuator, auto& dist
             const Size comp_own_end = max_it->value() + 1;
             const Size comp_local_end = lhs_planner.row_num();
 
-            thes::DynamicArray<Size> own_sizes(comm.size());
+            thes::DynamicArray<Size> own_sizes(*thes::safe_cast<std::size_t>(comm.size()));
             comm.allgather(comp_own_end - comp_own_begin, std::span{own_sizes});
             const Size global_own_off =
               std::reduce(own_sizes.begin(), own_sizes.begin() + comm.rank(), Size{0});
@@ -180,7 +181,7 @@ static auto base_csr_from_adjacent_stencil(const TValuator& valuator, auto& dist
               rhs_opt.emplace(lhs_builder.row_num());
             }
           }
-          barriers[3].arrive_and_wait();
+          std::get<3>(barriers).arrive_and_wait();
 
           assert(dist_info_storage.has_value());
           return *dist_info_storage;

@@ -61,7 +61,8 @@ struct DefaultSharedDefs {
 
   using LookupSymmetricDiffInfo = LookupSymmetricDiffusionInfo<BaseDefs>;
   template<typename TReal>
-  using DenseVector = lineal::DenseVector<TReal, Size, grex::max_vector_size<TReal>, Alloc<TReal>>;
+  using DenseVector =
+    lineal::DenseVector<TReal, Size, grex::native_sizes<TReal>.back(), Alloc<TReal>>;
 
   struct Defs : public BaseDefs {
     using SystemInfo = const LookupSymmetricDiffInfo&;
@@ -108,8 +109,10 @@ struct DefaultSharedDefs {
   using FileMatAggregator = amg::MatrixAggregator<DepDetective, FileAggregator<tIsShared>,
                                                   amg::NegativeOffdiagonalTransform, ByteAlloc>;
 
-  template<typename TThreadNum = thes::Empty, thes::AnyBoolTag TTiling = thes::TrueTag>
-  static auto make_expo(TThreadNum thread_num = {}, TTiling tiling = {}) {
+  template<typename TThreadNum = thes::Empty,
+           thes::AnyIndexTag TVecSize = thes::IndexTag<grex::native_sizes<Real>.back()>,
+           thes::AnyBoolTag TTiling = thes::TrueTag>
+  static auto make_expo(TThreadNum thread_num = {}, TVecSize vec_size = {}, TTiling tiling = {}) {
     auto mkexec = [&] {
       if constexpr (std::same_as<TThreadNum, thes::Empty>) {
         return thes::SequentialExecutor{};
@@ -121,25 +124,30 @@ struct DefaultSharedDefs {
     using Executor = decltype(mkexec());
     using TileSizes =
       std::conditional_t<tiling, thes::star::Constant<3, thes::ValueTag<Size, 8>>, void>;
-    using ExPo = AdaptivePolicy<Executor, TileSizes,
-                                grex::VectorSize<grex::max_vector_bytes / sizeof(Real)>{}>;
+    using ExPo =
+      std::conditional_t<vec_size == 1, AdaptivePolicy<Executor, TileSizes, grex::scalar_tag>,
+                         AdaptivePolicy<Executor, TileSizes, grex::full_tag<vec_size>>>;
     return ExPo{std::in_place, mkexec, std::nullopt};
   }
 
-  template<typename TThreadNum = thes::Empty>
-  static auto make_env(TThreadNum thread_num = {}) {
-    auto mkexpo = [&] { return make_expo(thread_num); };
+  template<typename TThreadNum = thes::Empty,
+           thes::AnyIndexTag TVecSize = thes::IndexTag<grex::native_sizes<Real>.back()>,
+           thes::AnyBoolTag TTiling = thes::TrueTag>
+  static auto make_env(TThreadNum thread_num = {}, TVecSize vec_size = {}, TTiling tiling = {}) {
+    auto mkexpo = [&] { return make_expo(thread_num, vec_size, tiling); };
     return Environment{std::in_place, mkexpo, JsonLogger{thes::Indentation{2}, unflush_tag}};
   }
 
-  template<AnyVector TFineVec, AnyMatrix TCoarseMat, AnyVector TCoarseVec>
+  template<AnyVector TFineVec, AnyMatrix TCoarseMat, AnyVector TCoarseVec, IsSymmetric tIsSymmetric>
   static auto make_wright() {
     static constexpr bool is_shared = SharedTensors<TCoarseMat, TCoarseVec>;
     static constexpr auto sor_var = lineal::SorVariant::ultra;
 
     using PreSmoother = lineal::SorSolver<Real, void, lineal::forward_tag, sor_var>;
     using PostSmoother = lineal::SorSolver<Real, void, lineal::backward_tag, sor_var>;
-    using CoarseSolver = lineal::CholeskySolver<Real, TCoarseMat>;
+    using CoarseSolver = std::conditional_t<tIsSymmetric == IsSymmetric{true},
+                                            lineal::CholeskySolver<Real, TCoarseMat>,
+                                            lineal::LuSolver<Real, TCoarseMat>>;
 
     using HierarchyWright =
       lineal::HierarchyWright</*TWork=*/Real, /*TCoarseLhs=*/TCoarseMat,
@@ -168,6 +176,7 @@ struct DefaultSharedDefs {
       PreSmoother{/*relax=*/1.0}, PostSmoother{/*relax=*/1.0}, CoarseSolver{});
   }
 };
+
 } // namespace lineal::test
 
 #endif // TEST_AUX_STENCIL_HPP

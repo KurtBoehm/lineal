@@ -28,12 +28,13 @@ struct CellInfo : public thes::MultiSize<TSize, tDims> {
   using Base::index_to_axis_index;
 
   template<std::size_t tDim, typename TIndex>
-  [[nodiscard]] auto axis_index(TIndex dim_index, auto tag, thes::IndexTag<tDim> dim = {}) const {
+  [[nodiscard]] auto axis_index(TIndex dim_index, auto tag,
+                                [[maybe_unused]] thes::IndexTag<tDim> dim = {}) const {
     if constexpr (tDim + 1 < dimension_num) {
-      return grex::constant<TIndex>(dim_index, tag);
+      return grex::broadcast(dim_index, tag);
     } else {
       assert(tag.part() <= this->axis_size(dim));
-      return grex::index_from(dim_index, tag);
+      return grex::indices(dim_index, tag);
     }
   }
 

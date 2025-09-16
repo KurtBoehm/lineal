@@ -42,8 +42,8 @@ struct OpExpr : public facades::ComponentWiseOp<OpExpr<TReal, TOp, TVecs...>,
   explicit OpExpr(TOp&& op, TVecs&&... vecs)
       : Parent(std::forward<TVecs>(vecs)...), op_(std::move(op)) {}
 
-  THES_ALWAYS_INLINE constexpr auto compute_impl(auto tag, const auto& /*children*/,
-                                                 auto... args) const {
+  THES_ALWAYS_INLINE constexpr auto compute_val(auto tag, const auto& /*children*/,
+                                                auto... args) const {
     if constexpr (requires { op_(args..., tag); }) {
       return op_(args..., tag);
     } else {
@@ -62,22 +62,35 @@ inline OpExpr<TReal, TOp, TVecs...> make_op_expr(TOp op, TVecs&&... vecs) {
 } // namespace detail
 
 template<typename TReal, AnyVector TVec1, AnyVector TVec2>
-inline constexpr auto add(TVec1&& v1, TVec2&& v2) {
+constexpr auto add(TVec1&& v1, TVec2&& v2) {
   return detail::make_op_expr<TReal>(std::plus{}, std::forward<TVec1>(v1), std::forward<TVec2>(v2));
 }
 template<typename TReal, AnyVector TVec1, AnyVector TVec2>
-inline constexpr auto subtract(TVec1&& v1, TVec2&& v2) {
+constexpr auto subtract(TVec1&& v1, TVec2&& v2) {
   return detail::make_op_expr<TReal>(std::minus{}, std::forward<TVec1>(v1),
                                      std::forward<TVec2>(v2));
 }
-
-template<std::floating_point TReal>
-inline constexpr auto scale_impl(TReal scalar) {
-  return [scalar](auto value) { return scalar * value; };
+template<typename TReal, AnyVector TVec1, AnyVector TVec2>
+constexpr auto cw_multiply(TVec1&& v1, TVec2&& v2) {
+  return detail::make_op_expr<TReal>(std::multiplies{}, std::forward<TVec1>(v1),
+                                     std::forward<TVec2>(v2));
 }
+template<typename TReal, AnyVector TVec1, AnyVector TVec2>
+constexpr auto cw_divide(TVec1&& v1, TVec2&& v2) {
+  return detail::make_op_expr<TReal>(std::divides{}, std::forward<TVec1>(v1),
+                                     std::forward<TVec2>(v2));
+}
+
 template<std::floating_point TReal, AnyVector TVec>
-inline constexpr auto scale(TVec&& vector, TReal scalar) {
-  return detail::make_op_expr<TReal>(scale_impl(scalar), std::forward<TVec>(vector));
+constexpr auto scale(TVec&& vector, TReal scalar) {
+  return detail::make_op_expr<TReal>([scalar](auto value) { return scalar * value; },
+                                     std::forward<TVec>(vector));
+}
+template<AnyVector TVec>
+constexpr auto cw_abs(TVec&& vector) {
+  using Value = std::decay_t<TVec>::Value;
+  return detail::make_op_expr<Value>([]<typename TValue>(TValue value) { return grex::abs(value); },
+                                     std::forward<TVec>(vector));
 }
 
 namespace detail {
@@ -94,10 +107,10 @@ struct ConstantExprBase {
   explicit ConstantExprBase(TReal value) : value_(value) {}
 
   THES_ALWAYS_INLINE constexpr auto compute_impl(auto tag, auto /*idx*/) const {
-    return grex::constant(value_, tag);
+    return grex::broadcast(value_, tag);
   }
   decltype(auto) lookup(auto /*idxs*/, grex::AnyTag auto tag) const {
-    return grex::constant(value_, tag);
+    return grex::broadcast(value_, tag);
   }
 
 private:
@@ -117,31 +130,31 @@ struct SharedConstantExpr
 };
 
 template<std::unsigned_integral TSize, typename TReal>
-inline constexpr auto constant(TSize size, TReal value) {
+constexpr auto constant(TSize size, TReal value) {
   return SharedConstantExpr<TReal, TSize>(size, value);
 }
 
-inline constexpr auto constant_like(const SharedVector auto& src, auto value) {
+constexpr auto constant_like(const SharedVector auto& src, auto value) {
   return constant(src.size(), value);
 }
 
 template<AnyVector TVec1, AnyVector TVec2>
-inline constexpr auto operator+(TVec1&& v1, TVec2&& v2) {
+constexpr auto operator+(TVec1&& v1, TVec2&& v2) {
   using Real = ValueUnion<TVec1, TVec2>;
   return add<Real>(std::forward<TVec1>(v1), std::forward<TVec2>(v2));
 }
 template<AnyVector TVec1, AnyVector TVec2>
-inline constexpr auto operator-(TVec1&& v1, TVec2&& v2) {
+constexpr auto operator-(TVec1&& v1, TVec2&& v2) {
   using Real = ValueUnion<TVec1, TVec2>;
   return subtract<Real>(std::forward<TVec1>(v1), std::forward<TVec2>(v2));
 }
 
 template<AnyVector TVec, std::floating_point TReal>
-inline constexpr auto operator*(TVec&& vector, TReal scalar) {
+constexpr auto operator*(TVec&& vector, TReal scalar) {
   return scale(std::forward<TVec>(vector), scalar);
 }
 template<std::floating_point TReal, AnyVector TVec>
-inline constexpr auto operator*(TReal scalar, TVec&& vector) {
+constexpr auto operator*(TReal scalar, TVec&& vector) {
   return scale(std::forward<TVec>(vector), scalar);
 }
 
@@ -194,18 +207,18 @@ struct SubVectorExpr<thes::IotaRange<TSize>, TVec>
   }
 
   THES_ALWAYS_INLINE static constexpr decltype(auto)
-  compute_impl(auto tag, [[maybe_unused]] const auto& children, auto it) {
+  compute_iter(auto tag, [[maybe_unused]] const auto& children, auto it) {
     assert(typename std::decay_t<decltype(thes::star::get_at<0>(children))>::const_iterator{it} -
              std::as_const(thes::star::get_at<0>(children)).begin() <
            thes::star::get_at<0>(children).size());
     return it.compute(tag);
   }
   THES_ALWAYS_INLINE constexpr decltype(auto)
-  compute_impl(auto tag, TypedIndex<is_shared, Size, GlobalSize> auto idx, const auto& /*children*/,
+  compute_base(auto tag, TypedIndex<is_shared, Size, GlobalSize> auto idx, const auto& /*children*/,
                TVec& vec) const {
     return vec.compute(adjust_idx(idx), tag);
   }
-  THES_ALWAYS_INLINE constexpr decltype(auto) compute_impl(auto tag,
+  THES_ALWAYS_INLINE constexpr decltype(auto) compute_base(auto tag,
                                                            thes::AnyIndexPosition auto idx,
                                                            const auto& /*children*/,
                                                            TVec& vec) const {
@@ -294,7 +307,7 @@ private:
 };
 
 template<typename TRange, SharedVector TVec>
-inline constexpr auto sub_vector(TRange&& range, TVec&& vec) {
+constexpr auto sub_vector(TRange&& range, TVec&& vec) {
   return SubVectorExpr<TRange, TVec>(std::forward<TRange>(range), std::forward<TVec>(vec));
 }
 } // namespace lineal

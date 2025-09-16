@@ -32,8 +32,8 @@ using Ref = std::vector<LoReal>;
 int main() {
   constexpr std::size_t vector_size = 4;
   constexpr Size size = 17;
-  constexpr grex::VectorPartSize<vector_size> vtag3{3};
-  constexpr grex::VectorSize<vector_size> vtag4{};
+  constexpr grex::PartTag<vector_size> vtag3{3};
+  constexpr grex::FullTag<vector_size> vtag4{};
   using Vec = grex::Vector<LoReal, vector_size>;
 
   auto range_eq = [&](auto&& vec1, auto&& vec2) {
@@ -48,8 +48,8 @@ int main() {
   }
 
   auto grex_eq = [](const auto vec1, const auto vec2) {
-    fmt::print("{}/{}", vec1, vec2);
-    THES_ALWAYS_ASSERT(grex::horizontal_and(vec1 == vec2, grex::VectorSize<vector_size>{}));
+    fmt::print("{}/{}\n", vec1, vec2);
+    THES_ALWAYS_ASSERT(grex::horizontal_and(vec1 == vec2, grex::full_tag<vector_size>));
   };
 
   auto euclidean_squared = [&](const auto& vector) {

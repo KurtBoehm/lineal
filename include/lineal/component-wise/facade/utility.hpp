@@ -13,13 +13,13 @@
 #include "thesauros/types.hpp"
 
 namespace lineal::impl {
-inline constexpr auto axis_range_children(const auto& children, thes::AnyIndexTag auto idx) {
+constexpr auto axis_range_children(const auto& children, thes::AnyIndexTag auto idx) {
   return children | thes::star::filter<[](auto /*idx*/, auto type) {
            return requires(const decltype(type)::Type& vec) { vec.axis_range(idx); };
          }>;
 }
 
-inline constexpr auto axis_range(const auto& children, thes::AnyIndexTag auto idx)
+constexpr auto axis_range(const auto& children, thes::AnyIndexTag auto idx)
 requires(!thes::star::is_empty<decltype(axis_range_children(children, idx))>)
 {
   auto axis_ranges =
@@ -29,12 +29,12 @@ requires(!thes::star::is_empty<decltype(axis_range_children(children, idx))>)
   return thes::star::get_at<0>(axis_ranges);
 }
 
-inline constexpr auto geometry_children(const auto& children) {
+constexpr auto geometry_children(const auto& children) {
   return children | thes::star::filter<[](auto /*idx*/, auto type) {
            return requires(const decltype(type)::Type& vec) { vec.geometry(); };
          }>;
 }
-inline constexpr decltype(auto) geometry(const auto& children)
+constexpr decltype(auto) geometry(const auto& children)
 requires(!thes::star::is_empty<decltype(geometry_children(children))>)
 {
   auto geometries =

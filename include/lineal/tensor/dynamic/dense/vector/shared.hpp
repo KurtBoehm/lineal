@@ -110,7 +110,7 @@ public:
     }
 
     void store(auto vector, grex::AnyTag auto tag) {
-      grex::store_ptr(ptr_, vector, tag);
+      grex::store(ptr_, vector, tag);
     }
 
   private:
@@ -298,12 +298,12 @@ public:
     return compute(i.index, tag);
   }
   decltype(auto) lookup(auto idxs, grex::AnyTag auto tag) const {
-    return grex::lookup(idxs, span(), tag);
+    return grex::gather(span(), idxs, tag);
   }
 
   void store(TypedIndex<is_shared, Size, GlobalSize> auto i, auto v, grex::AnyTag auto tag) {
     const auto index = index_value(i, local_index_tag, dist_info_);
-    grex::store_ptr(data() + index, v, tag);
+    grex::store(data() + index, v, tag);
   }
   // TODO
   void store(thes::AnyIndexPosition auto i, auto v, grex::AnyTag auto tag) {
@@ -329,9 +329,9 @@ private:
   static decltype(auto) load_ptr(TSrc* src, grex::AnyTag auto tag) {
     if constexpr (tag.size <= padding) {
       // TODO Mask this?
-      return grex::load_ptr_extended(src, tag);
+      return grex::load_extended(src, tag);
     } else {
-      return grex::load_ptr(src, tag);
+      return grex::load(src, tag);
     }
   }
 
@@ -348,7 +348,7 @@ private:
   [[no_unique_address]] DistributedInfoStorage dist_info_{};
 };
 
-template<typename TValue, typename TSize, std::size_t tPadding = grex::max_vector_size<TValue>,
+template<typename TValue, typename TSize, std::size_t tPadding = grex::native_sizes<TValue>.back(),
          typename TAllocator = thes::HugePagesAllocator<TValue>>
 struct DenseVector : public DenseVectorBase<TValue, TSize, tPadding, TAllocator> {
   using Base = DenseVectorBase<TValue, TSize, tPadding, TAllocator>;

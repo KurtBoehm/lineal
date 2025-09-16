@@ -1,0 +1,63 @@
+diff --git a/include/fmt/base.h b/include/fmt/base.h
+index 87b3fd7c..d3bf6bf6 100644
+--- a/include/fmt/base.h
++++ b/include/fmt/base.h
+@@ -1679,12 +1679,12 @@ template <typename... T> struct arg_pack {};
+ template <typename Char, int NUM_ARGS, int NUM_NAMED_ARGS, bool DYNAMIC_NAMES>
+ class format_string_checker {
+  private:
+-  type types_[max_of(1, NUM_ARGS)];
+-  named_arg_info<Char> named_args_[max_of(1, NUM_NAMED_ARGS)];
++  type types_[max_of<size_t>(1, NUM_ARGS)];
++  named_arg_info<Char> named_args_[max_of<size_t>(1, NUM_NAMED_ARGS)];
+   compile_parse_context<Char> context_;
+ 
+   using parse_func = auto (*)(parse_context<Char>&) -> const Char*;
+-  parse_func parse_funcs_[max_of(1, NUM_ARGS)];
++  parse_func parse_funcs_[max_of<size_t>(1, NUM_ARGS)];
+ 
+  public:
+   template <typename... T>
+@@ -2338,8 +2338,9 @@ template <typename Context, int NUM_ARGS, int NUM_NAMED_ARGS,
+           unsigned long long DESC>
+ struct named_arg_store {
+   // args_[0].named_args points to named_args to avoid bloating format_args.
+-  arg_t<Context, NUM_ARGS> args[1 + NUM_ARGS];
+-  named_arg_info<typename Context::char_type> named_args[NUM_NAMED_ARGS];
++  arg_t<Context, NUM_ARGS> args[1u + NUM_ARGS];
++  named_arg_info<typename Context::char_type>
++      named_args[static_cast<size_t>(NUM_NAMED_ARGS)];
+ 
+   template <typename... T>
+   FMT_CONSTEXPR FMT_ALWAYS_INLINE named_arg_store(T&... values)
+@@ -2372,7 +2373,7 @@ struct format_arg_store {
+   // +1 to workaround a bug in gcc 7.5 that causes duplicated-branches warning.
+   using type =
+       conditional_t<NUM_NAMED_ARGS == 0,
+-                    arg_t<Context, NUM_ARGS>[max_of(1, NUM_ARGS)],
++                    arg_t<Context, NUM_ARGS>[max_of<size_t>(1, NUM_ARGS)],
+                     named_arg_store<Context, NUM_ARGS, NUM_NAMED_ARGS, DESC>>;
+   type args;
+ };
+diff --git a/include/fmt/format.h b/include/fmt/format.h
+index 50e57144..60571dfb 100644
+--- a/include/fmt/format.h
++++ b/include/fmt/format.h
+@@ -1225,7 +1225,7 @@ FMT_CONSTEXPR auto do_format_base2e(int base_bits, Char* out, UInt value,
+   out += size;
+   do {
+     const char* digits = upper ? "0123456789ABCDEF" : "0123456789abcdef";
+-    unsigned digit = static_cast<unsigned>(value & ((1 << base_bits) - 1));
++    unsigned digit = static_cast<unsigned>(value & ((1u << base_bits) - 1));
+     *--out = static_cast<Char>(base_bits < 4 ? static_cast<char>('0' + digit)
+                                              : digits[digit]);
+   } while ((value >>= base_bits) != 0);
+@@ -2018,7 +2018,7 @@ FMT_CONSTEXPR FMT_INLINE auto write_int(OutputIt out, write_int_arg<T> arg,
+                                         const format_specs& specs) -> OutputIt {
+   static_assert(std::is_same<T, uint32_or_64_or_128_t<T>>::value, "");
+ 
+-  constexpr int buffer_size = num_bits<T>();
++  constexpr size_t buffer_size = num_bits<T>();
+   char buffer[buffer_size];
+   if (is_constant_evaluated()) fill_n(buffer, buffer_size, '\0');
+   const char* begin = nullptr;

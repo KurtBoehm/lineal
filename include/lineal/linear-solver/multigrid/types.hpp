@@ -131,7 +131,7 @@ struct Aggregate {
            decltype(op(std::declval<Index>())),
            OptDistributedIndex<typename TOutSizeByte::Unsigned, thes::UnVoidStorage<TOutIdxTag>>>)
   {
-    using OutSize = typename TOutSizeByte::Unsigned;
+    using OutSize = TOutSizeByte::Unsigned;
     using OutIdx = OptDistributedIndex<OutSize, thes::UnVoidStorage<TOutIdxTag>>;
 
     auto out_limits = [](Size idx) {
@@ -153,7 +153,7 @@ struct Aggregate {
   template<typename TOutSizeByte = TSizeByte, typename TOutIdxTag = thes::VoidStorage<TIdxTag>>
   auto offset(TOutSizeByte::Unsigned offset, thes::TypeTag<TOutSizeByte> size_tag = {},
               TOutIdxTag index_tag = {}) const {
-    using OutSize = typename TOutSizeByte::Unsigned;
+    using OutSize = TOutSizeByte::Unsigned;
     using OutIdx = OptDistributedIndex<OutSize, thes::UnVoidStorage<TOutIdxTag>>;
     return transform([offset](Index agg) { return OutIdx{index_value(agg) + offset}; }, size_tag,
                      index_tag);
@@ -161,7 +161,7 @@ struct Aggregate {
 
   template<typename TOutSizeByte = TSizeByte, typename TOutIdxTag = thes::VoidStorage<TIdxTag>>
   auto cast(thes::TypeTag<TOutSizeByte> size_tag = {}, TOutIdxTag index_tag = {}) const {
-    using OutSize = typename TOutSizeByte::Unsigned;
+    using OutSize = TOutSizeByte::Unsigned;
     using OutIdx = OptDistributedIndex<OutSize, thes::UnVoidStorage<TOutIdxTag>>;
     assert(!is_aggregate() || index_ < TOutSizeByte::max);
     return transform([](Index agg) { return OutIdx{*thes::safe_cast<OutSize>(index_value(agg))}; },

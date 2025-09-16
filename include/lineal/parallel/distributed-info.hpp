@@ -3,7 +3,6 @@
 
 // IWYU pragma: begin_exports
 #include "distributed-info/def.hpp"
-#include "distributed-info/neighbour-info.hpp"
 #include "distributed-info/operation.hpp"
 // IWYU pragma: end_exports
 

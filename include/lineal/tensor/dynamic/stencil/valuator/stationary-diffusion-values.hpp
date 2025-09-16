@@ -70,13 +70,13 @@ struct StationaryDiffusionValuesValuator : public ValuatorBase, public TDefs {
     }
     auto load_ext(grex::AnyTag auto tag) const {
       return begins_ | thes::star::transform([this, tag](const Real* ptr) {
-               return grex::load_ptr_extended(ptr + pos_, tag);
+               return grex::load_extended(ptr + pos_, tag);
              }) |
              thes::star::to_array;
     }
     auto load(grex::AnyTag auto tag) const {
       return begins_ | thes::star::transform([this, tag](const Real* ptr) {
-               return grex::load_ptr(ptr + pos_, tag);
+               return grex::load(ptr + pos_, tag);
              }) |
              thes::star::to_array;
     }
@@ -117,32 +117,32 @@ struct StationaryDiffusionValuesValuator : public ValuatorBase, public TDefs {
   }
 
   THES_ALWAYS_INLINE auto diagonal_base(auto /*cell_value*/, auto tag) const {
-    return grex::constant<Real>(0, tag);
+    return grex::zeros<Real>(tag);
   }
 
   template<std::size_t tDim, AxisSide tSide>
   THES_ALWAYS_INLINE auto border_diagonal_summand(auto cell_value, auto tag) const {
     static_assert(non_zero_borders | thes::star::contains(tDim));
-    return grex::constant<Real>(2 * sys_info_.axis_quotient(thes::index_tag<tDim>), tag) *
+    return grex::broadcast<Real>(2 * sys_info_.axis_quotient(thes::index_tag<tDim>), tag) *
            std::get<tDim>(cell_value);
   }
   template<std::size_t tDim, AxisSide tSide>
   THES_ALWAYS_INLINE auto border_rhs_summand(auto cell_value, auto tag) const {
     static_assert(non_zero_borders | thes::star::contains(tDim));
-    auto out = grex::constant<Real>(2 * sys_info_.axis_quotient(thes::index_tag<tDim>), tag) *
+    auto out = grex::broadcast<Real>(2 * sys_info_.axis_quotient(thes::index_tag<tDim>), tag) *
                std::get<tDim>(cell_value);
     if constexpr (tSide == AxisSide::START) {
-      out *= grex::constant<Real>(sys_info_.solution_start(), tag);
+      out *= grex::broadcast<Real>(sys_info_.solution_start(), tag);
     } else {
-      out *= grex::constant<Real>(sys_info_.solution_end(), tag);
+      out *= grex::broadcast<Real>(sys_info_.solution_end(), tag);
     }
     return out;
   }
 
   template<std::size_t tDim, AxisSide tSide>
   THES_ALWAYS_INLINE auto connection_value(auto from_info, auto to_info, auto tag) const {
-    return diff_(std::get<tDim>(from_info), std::get<tDim>(to_info), tag) *
-           grex::constant(sys_info_.axis_quotient(thes::index_tag<tDim>), tag);
+    return diff_(std::get<tDim>(from_info), std::get<tDim>(to_info)) *
+           tag.mask(grex::broadcast(sys_info_.axis_quotient(thes::index_tag<tDim>), tag));
   }
 
   template<std::size_t tDim, AxisSide tSide>
@@ -156,8 +156,8 @@ struct StationaryDiffusionValuesValuator : public ValuatorBase, public TDefs {
 
   THES_ALWAYS_INLINE auto diagonal(auto diagonal_sum, auto tag) const {
     if constexpr (zero_to_one) {
-      return grex::select(diagonal_sum == grex::constant<Real>(0, tag),
-                          grex::constant<Real>(1, tag), diagonal_sum, tag);
+      return grex::blend(diagonal_sum != grex::zeros<Real>(tag), grex::broadcast<Real>(1, tag),
+                         diagonal_sum);
     } else {
       return diagonal_sum;
     }

@@ -7,5 +7,5 @@
 #include "shared-stencil.hpp"
 
 int main() {
-  test::run<test::LinearSystemKind::FULL_CSR>();
+  test::run<test::LinearSystemKind::full_csr>();
 }

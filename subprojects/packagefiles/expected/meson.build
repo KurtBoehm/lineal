@@ -7,7 +7,7 @@
 project(
   'expected',
   'cpp',
-  version: '1.1',
+  version: '1.2',
   license: 'CC0-1.0',
 )
 

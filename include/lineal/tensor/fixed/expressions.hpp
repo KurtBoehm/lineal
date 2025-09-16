@@ -42,7 +42,7 @@ private:
 };
 
 template<AnyMatrix TLhs, AnyVector TRhs>
-inline constexpr auto operator*(TLhs&& lhs, TRhs&& rhs) {
+constexpr auto operator*(TLhs&& lhs, TRhs&& rhs) {
   using LhsValue = std::decay_t<TLhs>::Value;
   using RhsValue = std::decay_t<TRhs>::Value;
   return MatrixVectorProductView<std::common_type_t<LhsValue, RhsValue>, TLhs, TRhs>{

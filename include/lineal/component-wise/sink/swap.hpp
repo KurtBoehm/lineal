@@ -44,17 +44,17 @@ struct SwapSink
   explicit SwapSink(TLhs&& lhs, TRhs&& rhs)
       : Parent(std::forward<TLhs>(lhs), std::forward<TRhs>(rhs)) {}
 
-  THES_ALWAYS_INLINE static constexpr auto compute_impl(auto tag, const auto& /*children*/,
+  THES_ALWAYS_INLINE static constexpr auto compute_iter(auto tag, const auto& /*children*/,
                                                         auto it1, auto it2) {
-    const auto val1 = convert_unsafe<ValueRhs>(it1.compute(tag), tag);
-    const auto val2 = convert_unsafe<ValueLhs>(it2.compute(tag), tag);
+    const auto val1 = grex::convert_unsafe<ValueRhs>(it1.compute(tag));
+    const auto val2 = grex::convert_unsafe<ValueLhs>(it2.compute(tag));
     it1.store(val2, tag);
     it2.store(val1, tag);
   }
   THES_ALWAYS_INLINE static constexpr auto
-  compute_impl(auto tag, const auto& arg, const auto& /*children*/, Lhs& lhs, const Rhs& rhs) {
-    const auto val1 = convert_unsafe<ValueRhs>(lhs.compute(arg, tag), tag);
-    const auto val2 = convert_unsafe<ValueLhs>(rhs.compute(arg, tag), tag);
+  compute_base(auto tag, const auto& arg, const auto& /*children*/, Lhs& lhs, const Rhs& rhs) {
+    const auto val1 = grex::convert_unsafe<ValueRhs>(lhs.compute(arg, tag));
+    const auto val2 = grex::convert_unsafe<ValueLhs>(rhs.compute(arg, tag));
     lhs.store(arg, val2, tag);
     rhs.store(arg, val1, tag);
   }
@@ -101,7 +101,7 @@ private:
 };
 
 template<AnyVector TVec1, AnyVector TVec2>
-inline constexpr void swap(TVec1& vec1, TVec2& vec2, const auto& expo) {
+constexpr void swap(TVec1& vec1, TVec2& vec2, const auto& expo) {
   if constexpr (std::is_same_v<TVec1, TVec2>) {
     using std::swap;
     swap(vec1, vec2);

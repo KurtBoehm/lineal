@@ -10,7 +10,9 @@
 #include <array>
 #include <concepts>
 #include <functional>
+#include <tuple>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "thesauros/ranges.hpp"
@@ -28,12 +30,7 @@
 #include "aux/test.hpp"
 
 namespace test {
-enum struct LinearSystemKind : thes::u8 {
-  LOOKUP_STENCIL,
-  VALUE_STENCIL,
-  FULL_CSR,
-  COMPRESSED_CSR,
-};
+enum struct LinearSystemKind : thes::u8 { lookup_stencil, value_stencil, full_csr, compressed_csr };
 
 template<LinearSystemKind tKind>
 inline void run() {
@@ -49,16 +46,16 @@ inline void run() {
   using SysInfo = Tlax::LookupSymmetricDiffInfo;
 
   constexpr auto csr_map = thes::StaticMap{
-    thes::static_kv<LinearSystemKind::FULL_CSR, true>,
-    thes::static_kv<LinearSystemKind::COMPRESSED_CSR, true>,
+    thes::static_kv<LinearSystemKind::full_csr, true>,
+    thes::static_kv<LinearSystemKind::compressed_csr, true>,
   };
   constexpr bool is_csr = csr_map.get(thes::auto_tag<tKind>, false);
 
   constexpr auto valuator_map = thes::StaticMap{
-    thes::static_kv<LinearSystemKind::LOOKUP_STENCIL, thes::type_tag<Tlax::LookupValuator>>,
-    thes::static_kv<LinearSystemKind::VALUE_STENCIL, thes::type_tag<Tlax::ValueValuator>>,
-    thes::static_kv<LinearSystemKind::FULL_CSR, thes::type_tag<Tlax::LookupValuator>>,
-    thes::static_kv<LinearSystemKind::COMPRESSED_CSR, thes::type_tag<Tlax::LookupValuatorZero>>,
+    thes::static_kv<LinearSystemKind::lookup_stencil, thes::type_tag<Tlax::LookupValuator>>,
+    thes::static_kv<LinearSystemKind::value_stencil, thes::type_tag<Tlax::ValueValuator>>,
+    thes::static_kv<LinearSystemKind::full_csr, thes::type_tag<Tlax::LookupValuator>>,
+    thes::static_kv<LinearSystemKind::compressed_csr, thes::type_tag<Tlax::LookupValuatorZero>>,
   };
   using Valuator = std::decay_t<decltype(valuator_map.get(thes::auto_tag<tKind>))>::Type;
 
@@ -90,12 +87,21 @@ inline void run() {
                   std::array<Size, 4>{dims[0] * dims[1] * dims[2], dims[1] * dims[2], dims[2], 1}));
   THES_ALWAYS_ASSERT(test::star_eq(sys_info.axis_quotients(), thes::star::constant<3>(1)));
 
-  const auto env = Tlax::make_env(2U);
-  decltype(auto) expo = env.execution_policy();
+  const auto envvc = Tlax::make_env(2U);
+  const auto envsc = lineal::Environment{
+    std::in_place, [&] { return Tlax::make_expo(2U, thes::index_tag<1>); }, envvc.logger()};
+  decltype(auto) expovc = envvc.execution_policy();
+  decltype(auto) exposc = envsc.execution_policy();
 
-  auto material =
-    lineal::materials::diagonal_lines<Defs>(sys_info, thes::range(sys_info.total_size()), expo);
-  const Valuator valuator{sys_info, material};
+  const auto& env = envvc;
+  const auto& expo = expovc;
+
+  auto materialvc =
+    lineal::materials::diagonal_lines<Defs>(sys_info, thes::range(sys_info.total_size()), expovc);
+  auto materialsc =
+    lineal::materials::diagonal_lines<Defs>(sys_info, thes::range(sys_info.total_size()), exposc);
+  THES_ALWAYS_ASSERT(thes::test::range_eq(materialvc, materialsc));
+  const Valuator valuator{sys_info, materialsc};
   const auto sys = [&] {
     if constexpr (is_csr) {
       return lineal::csr_from_adjacent_stencil<FineLhs, FineRhs>(valuator, env);
@@ -115,59 +121,128 @@ inline void run() {
     THES_ALWAYS_ASSERT(sys.lhs.row_num() == sys.lhs.column_num());
   }
 
-  FineVec factor_vec{sys.rhs.size(), 2, env};
-  const auto prod = sys.lhs * factor_vec;
+  FineVec factorvc{sys.rhs.size(), 2, envvc};
+  const auto prod = sys.lhs * factorvc;
   THES_ALWAYS_ASSERT(test::vector_eq(prod, sys.lhs * lineal::constant(sys.rhs.size(), Real{2})));
 
-  const auto prod_vec = lineal::create_from<FineVec>(prod, expo);
-  THES_ALWAYS_ASSERT(test::vector_eq(prod, prod_vec, 1e-14));
+  const auto prodvc = lineal::create_from<FineVec>(prod, expovc);
+  const auto prodsc = lineal::create_from<FineVec>(prod, exposc);
+  THES_ALWAYS_ASSERT(test::vector_eq(prodvc, prodsc, 1e-14));
+  THES_ALWAYS_ASSERT(test::vector_eq(prod, prodvc, 1e-14));
 
-  const auto wright_instance = Tlax::make_wright<FineVec, CoarseLhs, CoarseVec>();
-  THES_ALWAYS_ASSERT((test::chol<Real, CoarseVec>(sys.lhs, wright_instance, env) <= 1e-13));
+  // TODO find a way to use sub-environments even with this messy setup
+  auto solver_tests = [&](thes::TypedValueTag<lineal::IsSymmetric> auto symmetric) {
+    const auto wright_instance = Tlax::make_wright<FineVec, CoarseLhs, CoarseVec, symmetric>();
+    env.log("coarse_solver", thes::type_name(wright_instance.coarse_solver()));
+    THES_ALWAYS_ASSERT((test::direct<Real, CoarseVec>(sys.lhs, wright_instance, env) <= 1e-13));
 
-  {
-    FineVec sol(sys.rhs.size(), 0, env);
+    if (envvc.execution_policy().thread_num() == 1) {
+      lineal::SorSolver<Real, void, lineal::forward_tag, lineal::SorVariant::regular> solver{0.9};
 
-    std::vector<Real> residuals{1e-12, 1e-8, 1e-13, 1e-13, 1e-13, 1e-13, 1e-13};
-    auto it = residuals.begin();
+      FineVec solvc(sys.rhs.size(), 0, envvc);
+      FineVec auxvc(sys.rhs.size(), 0, envvc);
+      auto instvc = solver.instantiate(sys.lhs, envvc);
+      instvc.apply(solvc, sys.rhs, std::tie(auxvc), envvc);
 
-    auto op = [&](auto res, auto& /*sol*/, const auto& envi) {
-      const auto bound = *(it++);
-      const auto err_max = lineal::max_norm<Real>(sol - factor_vec, expo);
-      envi.log("error", msg::ResidualErrorBound{res, err_max, bound});
-      THES_ALWAYS_ASSERT(res <= bound && err_max <= bound);
-    };
-    test::suite<Defs>(sys.lhs, sol, prod_vec, wright_instance, env, op);
-  }
+      FineVec solsc(sys.rhs.size(), 0, envsc);
+      FineVec auxsc(sys.rhs.size(), 0, envvc);
+      auto instsc = solver.instantiate(sys.lhs, envsc);
+      instsc.apply(solsc, sys.rhs, std::tie(auxsc), envsc);
+      THES_ALWAYS_ASSERT(test::vector_eq(solvc, solsc, 1e-14));
+    }
 
-  {
-    FineVec vec(sys.rhs.size(), env);
-    assign(vec, sys.rhs, expo);
-    THES_ALWAYS_ASSERT(test::vector_eq(vec, sys.rhs));
-  }
+    {
+      FineVec sol(sys.rhs.size(), 0, env);
 
-  {
-    FineVec sol(sys.rhs.size(), 0, env);
+      std::vector<Real> residuals{
+        // regular
+        /*cg=*/1e-12,
+        /*bicgstab=*/1e-12,
+        /*sor=*/1e-8,
+        /*ssor1=*/1e-13,
+        /*sor5=*/1e-13,
+        /*ssor5=*/1e-13,
+        /*pcg_ssor1=*/1e-13,
+        /*pbicgstab_ssor1=*/1e-12,
+        /*pcg_amg=*/1e-13,
+        /*pbicgstab_amg=*/1e-13,
+        // ultra
+        /*cg=*/1e-12,
+        /*bicgstab=*/1e-12,
+        /*sor=*/1e-8,
+        /*ssor1=*/1e-13,
+        /*sor5=*/1e-13,
+        /*ssor5=*/1e-13,
+        /*pcg_ssor1=*/1e-13,
+        /*pbicgstab_ssor1=*/1e-12,
+        /*pcg_amg=*/1e-13,
+        /*pbicgstab_amg=*/1e-13,
+      };
+      auto it = residuals.begin();
 
-    std::vector<Real> residuals{1e-13, 1e-9, 1e-14, 1e-14, 1e-14, 1e-13, 2e-14};
-    auto it = residuals.begin();
-    const auto ref = lineal::materials::diagonal_lines_eff_diff<Defs>(sys_info);
+      auto op = [&](auto res, auto& /*sol*/, const auto& envi) {
+        const auto bound = *(it++);
+        const auto err_max = lineal::max_norm<Real>(sol - factorvc, expo);
+        envi.log("error", msg::ResidualErrorBound{res, err_max, bound});
+        THES_ALWAYS_ASSERT(res <= bound && err_max <= bound);
+      };
+      test::suite<Defs>(sys.lhs, sol, prodvc, wright_instance, env, op);
+    }
 
-    auto op = [&, effdiff = lineal::EffDiffCalc{valuator, sys.compress_map, env}](
-                auto res, auto& /*sol*/, const auto& envi) {
-      using namespace thes::literals;
+    {
+      FineVec vec(sys.rhs.size(), env);
+      lineal::assign(vec, sys.rhs, expo);
+      THES_ALWAYS_ASSERT(test::vector_eq(vec, sys.rhs));
+    }
 
-      const auto bound = *(it++);
-      const auto err_max = lineal::max_norm<Real>(sys.lhs * sol - sys.rhs, expo);
-      envi.log("error", msg::ResidualsBound{res, err_max, bound});
-      THES_ALWAYS_ASSERT(res <= bound && err_max <= bound);
+    {
+      FineVec sol(sys.rhs.size(), 0, env);
 
-      const auto eff_diff = effdiff(valuator, sys.compress_map, sol, envi);
-      envi.log("eff_diff", msg::RefValue{eff_diff, ref});
-      THES_ALWAYS_ASSERT(thes::is_close<Real>(eff_diff, ref, "abs_tol"_key = bound));
-    };
-    test::suite<Defs>(sys.lhs, sol, sys.rhs, wright_instance, env, op);
-  }
+      std::vector<Real> residuals{
+        // regular
+        /*cg=*/1e-13,
+        /*bicgstab=*/1e-13,
+        /*sor=*/1e-9,
+        /*ssor1=*/1.1e-14,
+        /*sor5=*/1e-14,
+        /*ssor5=*/1.1e-14,
+        /*pcg_ssor1=*/1e-13,
+        /*pbicgstab_ssor1=*/1e-13,
+        /*pcg_amg=*/2e-14,
+        /*pbicgstab_amg=*/1e-13,
+        // ultra
+        /*cg=*/1e-13,
+        /*bicgstab=*/1e-13,
+        /*sor=*/1e-9,
+        /*ssor1=*/1.1e-14,
+        /*sor5=*/1e-14,
+        /*ssor5=*/1.1e-14,
+        /*pcg_ssor1=*/1e-13,
+        /*pbicgstab_ssor1=*/1e-13,
+        /*pcg_amg=*/2e-14,
+        /*pbicgstab_amg=*/1e-13,
+      };
+      auto it = residuals.begin();
+      const auto ref = lineal::materials::diagonal_lines_eff_diff<Defs>(sys_info);
+
+      auto op = [&, effdiff = lineal::EffDiffCalc{valuator, sys.compress_map, env}](
+                  auto res, auto& /*sol*/, const auto& envi) {
+        using namespace thes::literals;
+
+        const auto bound = *(it++);
+        const auto err_max = lineal::max_norm<Real>(sys.lhs * sol - sys.rhs, expo);
+        envi.log("error", msg::ResidualsBound{res, err_max, bound});
+        THES_ALWAYS_ASSERT(res <= bound && err_max <= bound);
+
+        const auto eff_diff = effdiff(valuator, sys.compress_map, sol, envi);
+        envi.log("eff_diff", msg::RefValue{eff_diff, ref});
+        THES_ALWAYS_ASSERT(thes::is_close<Real>(eff_diff, ref, "abs_tol"_key = bound));
+      };
+      test::suite<Defs>(sys.lhs, sol, sys.rhs, wright_instance, env, op);
+    }
+  };
+  solver_tests(thes::auto_tag<lineal::IsSymmetric{true}>);
+  solver_tests(thes::auto_tag<lineal::IsSymmetric{false}>);
 }
 } // namespace test
 

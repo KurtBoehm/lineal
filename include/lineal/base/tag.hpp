@@ -27,8 +27,10 @@
   struct Is##NAME##TagTrait<NAME##Tag<tValue>> : public std::true_type {}; \
   template<typename T> \
   concept Any##NAME##Tag = Is##NAME##TagTrait<T>::value; \
+  template<typename T> \
+  concept Opt##NAME##Tag = Any##NAME##Tag<T> || std::is_void_v<T>; \
   template<bool tVal1, bool tVal2> \
-  inline constexpr bool operator==(NAME##Tag<tVal1> /*tag1*/, NAME##Tag<tVal2> /*tag2*/) { \
+  constexpr bool operator==(NAME##Tag<tVal1> /*tag1*/, NAME##Tag<tVal2> /*tag2*/) { \
     return tVal1 == tVal2; \
   } \
   } \
@@ -49,7 +51,7 @@
   LINEAL_DEFINE_BOOL_TAG(NAME, {}, TRUE_PASCAL, TRUE_SNAKE, FALSE_PASCAL, FALSE_SNAKE)
 
 LINEAL_DEFINE_SIMPLE_BOOL_TAG(Direction, Forward, forward, Backward, backward)
-LINEAL_DEFINE_SIMPLE_BOOL_TAG(Neighbour, After, after, Before, before)
+LINEAL_DEFINE_SIMPLE_BOOL_TAG(Neighbor, After, after, Before, before)
 LINEAL_DEFINE_SIMPLE_BOOL_TAG(Valuation, Valued, valued, Unvalued, unvalued)
 LINEAL_DEFINE_SIMPLE_BOOL_TAG(Ordering, Ordered, ordered, Unordered, unordered)
 LINEAL_DEFINE_SIMPLE_BOOL_TAG(Exchange, Request, request, Respond, respond)

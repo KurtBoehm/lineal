@@ -9,6 +9,6 @@
 
 namespace lineal {
 enum struct IsSymmetric : bool {};
-}
+} // namespace lineal
 
 #endif // INCLUDE_LINEAL_BASE_TYPE_SAFE_HPP

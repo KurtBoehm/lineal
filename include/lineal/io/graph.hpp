@@ -71,7 +71,7 @@ struct fmt::formatter<lineal::amg::Edge<TVtxIdx, TEdgeSize>>
 
 template<typename TSizeByte, lineal::OptIndexTag TIdxTag>
 struct fmt::formatter<lineal::amg::Aggregate<TSizeByte, TIdxTag>>
-    : public fmt::nested_formatter<typename TSizeByte::Unsigned> {
+    : public fmt::nested_formatter<typename lineal::amg::Aggregate<TSizeByte, TIdxTag>::Index> {
   auto format(lineal::amg::Aggregate<TSizeByte, TIdxTag> agg, fmt::format_context& ctx) const {
     return this->write_padded(ctx, [&](auto it) {
       if (agg.is_unaggregated()) {
@@ -80,7 +80,7 @@ struct fmt::formatter<lineal::amg::Aggregate<TSizeByte, TIdxTag>>
       if (agg.is_isolated()) {
         return fmt::format_to(it, "iso");
       }
-      return fmt::format_to(it, "{}", this->nested(agg.index_));
+      return fmt::format_to(it, "{}", this->nested(agg.index()));
     });
   }
 };

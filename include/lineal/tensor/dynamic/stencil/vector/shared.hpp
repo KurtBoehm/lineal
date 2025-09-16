@@ -64,7 +64,7 @@ private:
     };
 
     static Value deref(const auto& self) {
-      return compute_impl(*self.valuator_, Idx{self.idx_}, grex::Scalar{});
+      return compute_impl(*self.valuator_, Idx{self.idx_}, grex::scalar_tag);
     }
     template<typename TSelf>
     static thes::TransferConst<TSelf, State>& state(TSelf& self) {
@@ -105,11 +105,11 @@ public:
       : valuator_(std::forward<TValuator>(valuator)) {}
 
   [[nodiscard]] Real operator[](TypedIndex<is_shared, Size, GlobalSize> auto idx) const {
-    return compute_impl(valuator_, idx, grex::Scalar{});
+    return compute_impl(valuator_, idx, grex::scalar_tag);
   }
   template<TypedIndex<is_shared, Size, GlobalSize> TIdx>
   [[nodiscard]] Real operator[](IdxPos<TIdx> idx) const {
-    return compute_impl(valuator_, idx.index, idx.position, grex::Scalar{});
+    return compute_impl(valuator_, idx.index, idx.position, grex::scalar_tag);
   }
 
   auto compute(TypedIndex<is_shared, Size, GlobalSize> auto idx, grex::AnyTag auto tag) const {
@@ -180,42 +180,43 @@ public:
 private:
   static Real compute_impl(const Valuator& valuator,
                            const TypedIndex<is_shared, Size, GlobalSize> auto idx, auto gpos,
-                           grex::ScalarTag auto /*tag*/) {
+                           grex::OptValuedScalarTag<Real> auto /*tag*/) {
     decltype(auto) dist_info = valuator.distributed_info_storage();
     const auto lidx = index_value(idx, local_index_tag, dist_info);
 
     const SystemInfo& info = valuator.info();
     Real sum = 0;
-    const auto cell_value = valuator.cell_value(*(valuator.begin() + lidx), grex::Scalar{});
+    const auto cell_value = valuator.cell_value(*(valuator.begin() + lidx), grex::scalar_tag);
 
     thes::star::iota<0, dimension_num> | thes::star::only_range<Valuator::non_zero_borders> |
       thes::star::for_each([&](thes::AnyIndexTag auto j) THES_ALWAYS_INLINE {
         const Size axis_index = thes::star::get_at(gpos, j);
         if (axis_index == 0) {
           sum +=
-            valuator.template border_rhs_summand<j, AxisSide::START>(cell_value, grex::Scalar{});
+            valuator.template border_rhs_summand<j, AxisSide::START>(cell_value, grex::scalar_tag);
         }
         if (axis_index + 1 == info.axis_size(j)) {
-          sum += valuator.template border_rhs_summand<j, AxisSide::END>(cell_value, grex::Scalar{});
+          sum +=
+            valuator.template border_rhs_summand<j, AxisSide::END>(cell_value, grex::scalar_tag);
         }
       });
 
     return sum;
   }
 
-  template<grex::VectorTag TVecTag>
-  static grex::Vector<Real, TVecTag::size>
+  template<grex::OptValuedVectorTag<Real> TTag>
+  static grex::Vector<Real, TTag::size>
   compute_impl(const Valuator& valuator, const TypedIndex<is_shared, Size, GlobalSize> auto idx,
-               auto gpos, TVecTag tag) {
-    static constexpr std::size_t size = TVecTag::size;
+               auto gpos, TTag tag) {
+    static constexpr std::size_t size = TTag::size;
     decltype(auto) dist_info = valuator.distributed_info_storage();
     const auto lidx = index_value(idx, local_index_tag, dist_info);
 
-    auto real_tag = tag.instantiate(thes::type_tag<Real>);
+    auto real_tag = tag.instantiate(grex::type_tag<Real>);
     const auto cell_info = (valuator.begin() + lidx).load(tag);
     const auto cell_value = valuator.cell_value(cell_info, real_tag);
     const SystemInfo& info = valuator.info();
-    grex::Vector<Real, size> sum(0);
+    auto sum = grex::Vector<Real, size>::zeros();
 
     thes::star::iota<0, dimension_num> | thes::star::only_range<Valuator::non_zero_borders> |
       thes::star::for_each([&](thes::AnyIndexTag auto j) THES_ALWAYS_INLINE {
@@ -223,14 +224,15 @@ private:
         const Vec axis_index{thes::star::get_at(gpos, j)};
 
         // assumption: cell_value = 0 → border_rhs_summand = 0
-        const auto start_mask = axis_index == Vec(0);
+        const auto start_mask = grex::convert_safe<Real>(axis_index == Vec::zeros());
         auto start_val =
           valuator.template border_rhs_summand<j, AxisSide::START>(cell_value, real_tag);
-        sum = grex::select_add(start_mask, sum, start_val, real_tag);
+        sum = grex::mask_add(start_mask, sum, start_val);
 
-        const auto end_mask = axis_index + Vec(1) == Vec(info.axis_size(j));
+        const auto end_mask =
+          grex::convert_safe<Real>(axis_index + Vec{1} == Vec(info.axis_size(j)));
         auto end_val = valuator.template border_rhs_summand<j, AxisSide::END>(cell_value, real_tag);
-        sum = grex::select_add(end_mask, sum, end_val, real_tag);
+        sum = grex::mask_add(end_mask, sum, end_val);
       });
 
     return sum;
@@ -243,7 +245,7 @@ private:
 
     const auto gidx = index_value(idx, global_index_tag, dist_info);
     const auto gpos_fun = [&](auto j) {
-      if constexpr (grex::ScalarTag<decltype(tag)>) {
+      if constexpr (grex::AnyScalarTag<decltype(tag)>) {
         return info.index_to_axis_index(gidx, j);
       } else {
         return info.index_to_axis_index(gidx, tag, thes::type_tag<RealSize>, j);

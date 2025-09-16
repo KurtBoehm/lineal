@@ -48,20 +48,20 @@ struct MatrixVectorProductExpr
       : Parent(std::forward<TLhs>(lhs), std::forward<TRhs>(rhs)) {}
 
   template<grex::AnyTag TTag>
-  THES_ALWAYS_INLINE auto compute_base(TTag tag, const auto& children, auto get_row,
+  THES_ALWAYS_INLINE auto compute_impl(TTag tag, const auto& children, auto get_row,
                                        auto get_row_off) const {
     const auto& rhs = thes::star::get_at<1>(children);
 
-    if constexpr (grex::VectorTag<TTag> && grex::is_geometry_respecting<TTag> &&
+    if constexpr (grex::AnyVectorTag<TTag> && grex::is_geometry_respecting<TTag> &&
                   BandedIterable<Lhs, TTag>) {
       decltype(auto) row = get_row();
 
-      auto sum = grex::constant(Real{0}, tag);
+      auto sum = grex::zeros<Real>(tag);
       auto rhs_it = rhs.begin() + row.index();
       row.banded_iterate(
         [&](auto val, auto off) THES_ALWAYS_INLINE {
-          sum += grex::convert_unsafe<Real>(val, tag) *
-                 grex::convert_unsafe<Real>(off(rhs_it).compute(tag), tag);
+          sum +=
+            grex::convert_unsafe<Real>(val) * grex::convert_unsafe<Real>(off(rhs_it).compute(tag));
         },
         unordered_tag, tag);
       return sum;
@@ -79,14 +79,15 @@ struct MatrixVectorProductExpr
     }
   }
 
-  THES_ALWAYS_INLINE auto compute_impl(auto tag, const auto& children, auto lhs_it) const {
-    return compute_base(
+  THES_ALWAYS_INLINE auto compute_iter(grex::AnyTag auto tag, const auto& children,
+                                       auto lhs_it) const {
+    return compute_impl(
       tag, children, [&]() THES_ALWAYS_INLINE { return *lhs_it; },
       [&](auto off) THES_ALWAYS_INLINE { return lhs_it[off]; });
   }
-  THES_ALWAYS_INLINE auto compute_impl(auto tag, const auto& arg, const auto& children,
+  THES_ALWAYS_INLINE auto compute_base(grex::AnyTag auto tag, const auto& arg, const auto& children,
                                        const auto& lhs) const {
-    return compute_base(
+    return compute_impl(
       tag, children, [&]() THES_ALWAYS_INLINE { return lhs[arg]; },
       [&](auto off) THES_ALWAYS_INLINE { return lhs[arg + Size{off}]; });
   }
@@ -124,12 +125,12 @@ private:
 };
 
 template<typename TReal, AnyMatrix TLhs, AnyVector TRhs>
-inline constexpr auto multiply(TLhs&& lhs, TRhs&& rhs) {
+constexpr auto multiply(TLhs&& lhs, TRhs&& rhs) {
   return MatrixVectorProductExpr<TReal, TLhs, TRhs>(std::forward<TLhs>(lhs),
                                                     std::forward<TRhs>(rhs));
 }
 template<AnyMatrix TLhs, AnyVector TRhs>
-inline constexpr auto operator*(TLhs&& lhs, TRhs&& rhs) {
+constexpr auto operator*(TLhs&& lhs, TRhs&& rhs) {
   using Real = ValueUnion<TLhs, TRhs>;
   return multiply<Real>(std::forward<TLhs>(lhs), std::forward<TRhs>(rhs));
 }

@@ -11,15 +11,19 @@
 #include <cstddef>
 #include <functional>
 #include <random>
+#include <ranges>
 #include <type_traits>
 #include <utility>
 
 #include "pcg_random.hpp"
 #include "thesauros/algorithms.hpp"
+#include "thesauros/format.hpp"
+#include "thesauros/io.hpp"
 #include "thesauros/macropolis.hpp"
 #include "thesauros/math.hpp"
 #include "thesauros/static-ranges.hpp"
 #include "thesauros/types.hpp"
+#include "thesauros/utility.hpp"
 
 #include "lineal/component-wise.hpp"
 #include "lineal/vectorization.hpp"
@@ -69,11 +73,12 @@ struct MaterialSink : public facades::SharedNullaryCwOp<MaterialSink<TMatIdxs, T
   MaterialSink(Size size, TOp op, thes::TypeTag<TDefs> /*tag*/)
       : Facade(size), mat_(size), op_(std::move(op)) {}
 
-  THES_ALWAYS_INLINE void compute_impl(grex::Scalar /*tag*/, Size index) {
+  THES_ALWAYS_INLINE void compute_impl(grex::ScalarTag /*tag*/, Size index) {
     mat_[index] = op_(index);
   }
 
-  MaterialSink<TMatIdxs&, TSize, TOp> thread_instance(const auto& /*info*/, grex::Scalar /*tag*/) {
+  MaterialSink<TMatIdxs&, TSize, TOp> thread_instance(const auto& /*info*/,
+                                                      grex::ScalarTag /*tag*/) {
     return {mat_, op_};
   }
 
@@ -213,11 +218,10 @@ inline auto diagonal_lines(const auto& info, const auto range, const auto& expo)
   using Size = TDefs::Size;
   using CellInfo = detail::CellInfo<TDefs>;
 
-  const auto goff = range.begin_value();
   detail::MaterialSink sink{
     range.size(),
     [&](const Size index) {
-      const auto pos = info.index_to_pos(index + goff);
+      const auto pos = info.index_to_pos(range[index]);
       const auto base = thes::star::all_except_idxs<TDefs::flow_axis>(pos) |
                         thes::star::left_reduce(std::plus<>{}, Size{0});
       return *thes::safe_cast<CellInfo>(base % TDefs::max_material_num);
@@ -243,6 +247,91 @@ inline auto diagonal_lines_eff_diff(const auto& info) {
   });
   return sum / Real(sizes | thes::star::left_reduce(std::multiplies{}));
 }
+
+template<typename TDefs, typename TSize, std::size_t tDims>
+inline auto expanded_repeated(auto make_base, const std::array<TSize, tDims>& ppos,
+                              const thes::SubMultiSize<TSize, tDims>& dims_off,
+                              const thes::SubMultiSize<TSize, tDims>& dims_exp,
+                              const thes::MultiSize<TSize, tDims>& world_dims, const auto& expo) {
+  using Pos = std::array<TSize, tDims>;
+  using Size = TDefs::Size;
+
+  const auto reflect = thes::star::static_apply<tDims>(
+    [&]<std::size_t... tI>() { return std::array<bool, tDims>{(get<tI>(ppos) % 2 == 1)...}; });
+  const auto base_materials =
+    make_base(std::views::transform(thes::range(dims_off.total_size()), [&](auto i) {
+      return world_dims.pos_to_index(dims_off.local_index_to_global_pos(i));
+    }));
+
+  detail::MaterialSink sink{
+    dims_exp.total_size(),
+    [&](const Size i) {
+      const Pos gpos = dims_exp.local_index_to_global_pos(i);
+      const Pos rpos = dims_off.reflect(dims_off.reflect_into(gpos), reflect);
+      return base_materials[dims_off.global_pos_to_local_index(rpos)];
+    },
+    thes::type_tag<TDefs>,
+  };
+  expo.execute(sink);
+  return std::move(sink).material_indices();
+}
+
+template<typename TMultiSizes, typename TMaterials, bool tHorizontal>
+struct MaterialIndexPrinter {
+  TMultiSizes multisizes;
+  TMaterials materials;
+};
+template<bool tHorizontal = true, typename TMultiSizes, typename TMaterials>
+inline MaterialIndexPrinter<TMultiSizes, TMaterials, tHorizontal>
+index_printer(TMultiSizes&& multisizes, TMaterials&& materials) {
+  return {
+    .multisizes = std::forward<TMultiSizes>(multisizes),
+    .materials = std::forward<TMaterials>(materials),
+  };
+}
 } // namespace lineal::materials
+
+template<typename TMultiSizes, typename TMaterials, bool tHorizontal>
+struct fmt::formatter<lineal::materials::MaterialIndexPrinter<TMultiSizes, TMaterials, tHorizontal>>
+    : public fmt::nested_formatter<typename std::decay_t<TMaterials>::Value> {
+  auto format(
+    const lineal::materials::MaterialIndexPrinter<TMultiSizes, TMaterials, tHorizontal>& printer,
+    fmt::format_context& ctx) const {
+    return this->write_padded(ctx, [&](auto it) {
+      using Size = std::decay_t<TMultiSizes>::Size;
+      constexpr std::size_t dimensions = std::decay_t<TMultiSizes>::dimension_num;
+      constexpr auto dim1 = thes::index_tag<dimensions - 1>;
+      constexpr auto dim2 = thes::index_tag<dimensions - 2>;
+      const auto& ms = printer.multisizes;
+
+      if constexpr (tHorizontal) {
+        for (thes::Delimiter d{"\n"}; const auto i : thes::range(ms.axis_size(dim2))) {
+          fmt::format_to(it, "{}", d);
+          for (thes::Delimiter dd{" "};
+               const auto j : thes::range(Size{}, ms.total_size(), ms.from_size(dim2))) {
+            fmt::format_to(it, "{}", dd);
+            for (const auto k : thes::range(ms.axis_size(dim1))) {
+              const auto v = printer.materials[j + i * ms.axis_size(dim1) + k];
+              fmt::format_to(it, thes::rainbow_fg(v), "{}", v);
+            }
+          }
+        }
+      } else {
+        for (thes::Delimiter d{"\n-\n"};
+             const auto& chunk : std::views::chunk(printer.materials, ms.from_size(dim2))) {
+          fmt::format_to(it, "{}", d);
+          for (thes::Delimiter dd{"\n"};
+               const auto& row : std::views::chunk(chunk, ms.axis_size(dim1))) {
+            fmt::format_to(it, "{}", dd);
+            for (const auto& v : row) {
+              fmt::format_to(it, thes::rainbow_fg(v), "{}", v);
+            }
+          }
+        }
+      }
+      return it;
+    });
+  }
+};
 
 #endif // TEST_MATERIALS_HPP

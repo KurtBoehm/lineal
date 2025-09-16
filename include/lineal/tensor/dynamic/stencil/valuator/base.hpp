@@ -22,10 +22,10 @@ struct ValuatorPtrIter {
     return *ptr_;
   }
   auto load_ext(grex::AnyTag auto tag) const {
-    return grex::load_ptr_extended(ptr_, tag);
+    return grex::load_extended(ptr_, tag);
   }
   auto load(grex::AnyTag auto tag) const {
-    return grex::load_ptr(ptr_, tag);
+    return grex::load(ptr_, tag);
   }
 
   ValuatorPtrIter operator+(std::ptrdiff_t off) const {

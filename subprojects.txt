@@ -1,6 +1,6 @@
 argparse
+grex
 options
 pcg-cpp
-stado
 thesauros
 unordered_dense

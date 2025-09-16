@@ -7,5 +7,5 @@
 #include "shared-stencil.hpp"
 
 int main() {
-  test::run<test::LinearSystemKind::LOOKUP_STENCIL>();
+  test::run<test::LinearSystemKind::lookup_stencil>();
 }

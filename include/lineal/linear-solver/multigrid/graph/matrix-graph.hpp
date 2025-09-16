@@ -53,7 +53,7 @@ struct MatrixGraph : public SharedGraphBase {
   using Edge = amg::Edge<VertexIdx, EdgeSize>;
   using ExtEdge = amg::Edge<ExtVertexIdx, EdgeSize>;
 
-  using EdgeIdxs = thes::MultiByteIntegers<EdgeSizeByte, grex::max_vector_bytes, TByteAlloc>;
+  using EdgeIdxs = thes::MultiByteIntegers<EdgeSizeByte, grex::register_bytes.back(), TByteAlloc>;
   using EdgeIdxsIter = EdgeIdxs::const_iterator;
 
   using Row = Matrix::ConstRow;
@@ -81,7 +81,7 @@ struct MatrixGraph : public SharedGraphBase {
       return row_;
     }
     Weight weight() const {
-      return Transform::diagonal(row_.diagonal(), grex::Scalar{});
+      return Transform::diagonal(row_.diagonal(), grex::scalar_tag);
     }
 
     EdgeSize start_index() const {
@@ -111,12 +111,13 @@ struct MatrixGraph : public SharedGraphBase {
 
       if constexpr (is_shared) {
         auto offdiag_op = [&](ExtVertexIdx j, Weight value) THES_ALWAYS_INLINE {
-          return edge_op(Edge{edge_idx++, vidx, j}, Transform::offdiagonal(value, grex::Scalar{}));
+          return edge_op(Edge{edge_idx++, vidx, j},
+                         Transform::offdiagonal(value, grex::scalar_tag));
         };
         return row_.iterate(
           offdiag_op,
           [&](ExtVertexIdx j, auto value) THES_ALWAYS_INLINE {
-            return vtx_op(Vertex{j}, Transform::diagonal(value, grex::Scalar{}));
+            return vtx_op(Vertex{j}, Transform::diagonal(value, grex::scalar_tag));
           },
           offdiag_op, is_valued, is_ordered);
       } else {
@@ -124,14 +125,15 @@ struct MatrixGraph : public SharedGraphBase {
         auto offdiag_op = [&](ExtVertexIdx j, Weight value) THES_ALWAYS_INLINE {
           const auto eidx = edge_idx++;
           if constexpr (is_extended) {
-            return edge_op(ExtEdge{eidx, exvidx, j}, Transform::offdiagonal(value, grex::Scalar{}));
+            return edge_op(ExtEdge{eidx, exvidx, j},
+                           Transform::offdiagonal(value, grex::scalar_tag));
           } else {
             if (range.contains(j.index())) [[likely]] {
               return edge_op(Edge{eidx, vidx, index_convert(j, own_index_tag, dist_info)},
-                             Transform::offdiagonal(value, grex::Scalar{}));
+                             Transform::offdiagonal(value, grex::scalar_tag));
             }
             using Ret = decltype(edge_op(Edge{eidx, vidx, VertexIdx{}},
-                                         Transform::offdiagonal(value, grex::Scalar{})));
+                                         Transform::offdiagonal(value, grex::scalar_tag)));
             THES_RETURN_EMPTY_OPTIONAL(Ret);
           }
         };
@@ -139,7 +141,7 @@ struct MatrixGraph : public SharedGraphBase {
           offdiag_op,
           [&]([[maybe_unused]] ExtVertexIdx j, auto value) THES_ALWAYS_INLINE {
             assert(j == exvidx);
-            return vtx_op(Vertex{vidx}, Transform::diagonal(value, grex::Scalar{}));
+            return vtx_op(Vertex{vidx}, Transform::diagonal(value, grex::scalar_tag));
           },
           offdiag_op, is_valued, is_ordered);
       }
@@ -306,7 +308,7 @@ public:
   }
 
   THES_ALWAYS_INLINE Weight head_vertex_weight(const ExtEdge& edge) const {
-    return Transform::diagonal(matrix_.diagonal_at(edge.head().index()), grex::Scalar{});
+    return Transform::diagonal(matrix_.diagonal_at(edge.head().index()), grex::scalar_tag);
   }
 
   std::optional<ExtEdge> reverse(const ExtEdge& edge) const {
@@ -342,7 +344,7 @@ public:
 
   Weight weight_of(const ExtEdge& edge) const {
     return Transform::offdiagonal(matrix_.entry_at(edge.tail().index(), edge.head().index()),
-                                  grex::Scalar{});
+                                  grex::scalar_tag);
   }
 
 private:

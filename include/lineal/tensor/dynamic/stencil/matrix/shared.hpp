@@ -137,7 +137,7 @@ struct AdjacentStencilMatrix : public SharedMatrixBase {
       return iterate(op, op, op, is_valued, is_ordered);
     }
 
-    [[nodiscard]] THES_ALWAYS_INLINE bool banded_valid(grex::VectorTag auto tag) const {
+    [[nodiscard]] THES_ALWAYS_INLINE bool banded_valid(grex::AnyVectorTag auto tag) const {
       constexpr auto last = dimension_num - 1;
       return thes::star::get_at<last>(global_pos_) + tag.part() <=
              valuator().info().axis_size(thes::auto_tag<last>);
@@ -145,7 +145,7 @@ struct AdjacentStencilMatrix : public SharedMatrixBase {
 
     THES_ALWAYS_INLINE void banded_iterate(auto before, auto diagonal, auto after,
                                            AnyOrderingTag auto is_ordered,
-                                           grex::VectorTag auto tag) const
+                                           grex::AnyVectorTag auto tag) const
     requires(!tExtended)
     {
       stencil::banded_iterate(ext_index(), global_pos_, valuator_, std::move(before),
@@ -153,7 +153,7 @@ struct AdjacentStencilMatrix : public SharedMatrixBase {
     }
 
     THES_ALWAYS_INLINE void banded_iterate(auto op, AnyOrderingTag auto is_ordered,
-                                           grex::VectorTag auto tag) const
+                                           grex::AnyVectorTag auto tag) const
     requires(!tExtended)
     {
       assert(banded_valid(tag));

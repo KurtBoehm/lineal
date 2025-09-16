@@ -41,8 +41,8 @@ struct DefaultCycleInfo {
 
   [[nodiscard]] DefaultCycleInfo get_coarser() const {
     switch (cycle_) {
-    case CycleKind::REGULAR: return {cycle_, iter_num_};
-    case CycleKind::DECREASING: return {cycle_, iter_};
+      case CycleKind::REGULAR: return {cycle_, iter_num_};
+      case CycleKind::DECREASING: return {cycle_, iter_};
     }
     throw std::runtime_error("Unknown cycle kind!");
   }

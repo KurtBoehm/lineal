@@ -10,9 +10,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdlib>
-#include <type_traits>
 
-#include "stado/stado.hpp"
 #include "thesauros/macropolis.hpp"
 #include "thesauros/static-ranges.hpp"
 #include "thesauros/types.hpp"
@@ -72,6 +70,9 @@ template<AnyVector TSol, AnyMatrix TLhs, AnyVector TRhs>
 requires(TLhs::dimensions.row_num == TLhs::dimensions.column_num &&
          TLhs::dimensions.row_num == TRhs::size && TSol::size == TRhs::size)
 THES_ALWAYS_INLINE constexpr TSol solve(const TLhs& lhs, const TRhs& rhs) {
+  using namespace grex::literals;
+  using Real = TSol::Value;
+
   constexpr std::size_t size = TRhs::size;
   if constexpr (size == 1) {
     return TSol{rhs[thes::index_tag<0>] / lhs(thes::index_tag<0>, thes::index_tag<0>)};
@@ -87,25 +88,17 @@ THES_ALWAYS_INLINE constexpr TSol solve(const TLhs& lhs, const TRhs& rhs) {
 
     const auto det = a * d - b * c;
 
-    if (!std::is_constant_evaluated()) {
-      using Real = TSol::Value;
-      using Vec2 = stado::Vector<Real, 2>;
+    if !consteval {
+      using Vec2 = grex::Vector<Real, 2>;
 
       if constexpr (std::same_as<Real, double>) {
-        const Vec2 rhs_vec = grex::load_ptr(rhs.data(), grex::VectorSize<2>{});
-        const Vec2 rhs_rev = stado::permute2<1, 0>(rhs_vec);
-        const Vec2 out = stado::mul_sub(rhs_vec, Vec2{d, a}, rhs_rev * Vec2{b, c}) / det;
-
-        return TSol{
-          out.template extract<0>(),
-          out.template extract<1>(),
-        };
+        const Vec2 rhs_vec = Vec2::load(rhs.data());
+        const Vec2 rhs_rev = grex::shuffle<1_sh, 0_sh>(rhs_vec);
+        const Vec2 out = grex::fmsub(rhs_vec, Vec2{d, a}, rhs_rev * Vec2{b, c}) / Vec2{det};
+        return TSol{out[0], out[1]};
       }
     }
-    return TSol{
-      (d * b0 - b * b1) / det,
-      (a * b1 - c * b0) / det,
-    };
+    return TSol{(d * b0 - b * b1) / det, (a * b1 - c * b0) / det};
   }
   if constexpr (size == 3) {
     const auto a = lhs(thes::index_tag<0>, thes::index_tag<0>);
@@ -118,43 +111,35 @@ THES_ALWAYS_INLINE constexpr TSol solve(const TLhs& lhs, const TRhs& rhs) {
     const auto h = lhs(thes::index_tag<2>, thes::index_tag<1>);
     const auto i = lhs(thes::index_tag<2>, thes::index_tag<2>);
 
-    const auto b0 = rhs[thes::index_tag<0>];
-    const auto b1 = rhs[thes::index_tag<1>];
-    const auto b2 = rhs[thes::index_tag<2>];
+    const auto b0 = Real(rhs[thes::index_tag<0>]);
+    const auto b1 = Real(rhs[thes::index_tag<1>]);
+    const auto b2 = Real(rhs[thes::index_tag<2>]);
 
-    if (!std::is_constant_evaluated()) {
-      using Real = TSol::Value;
-      using Vec4 = stado::Vector<Real, 4>;
+    if !consteval {
+      using Vec4 = grex::Vector<Real, 4>;
 
-      if constexpr (std::same_as<Real, thes::f32> ||
-                    (STADO_INSTRUCTION_SET >= STADO_AVX2 && std::same_as<Real, thes::f64>)) {
-        Vec4 abc{a, b, c, d};
-        Vec4 def{d, e, f, g};
-        Vec4 ghi{g, h, i, 0};
+      Vec4 abc{a, b, c, d};
+      Vec4 def{d, e, f, g};
+      Vec4 ghi{g, h, i, 0};
 
-        Vec4 bca = stado::permute4<1, 2, 0, 3>(abc);
-        Vec4 cab = stado::permute4<2, 0, 1, 3>(abc);
-        Vec4 efd = stado::permute4<1, 2, 0, 3>(def);
-        Vec4 fde = stado::permute4<2, 0, 1, 3>(def);
-        Vec4 hig = stado::permute4<1, 2, 0, 3>(ghi);
-        Vec4 igh = stado::permute4<2, 0, 1, 3>(ghi);
+      Vec4 bca = grex::shuffle<1_sh, 2_sh, 0_sh, 3_sh>(abc);
+      Vec4 cab = grex::shuffle<2_sh, 0_sh, 1_sh, 3_sh>(abc);
+      Vec4 efd = grex::shuffle<1_sh, 2_sh, 0_sh, 3_sh>(def);
+      Vec4 fde = grex::shuffle<2_sh, 0_sh, 1_sh, 3_sh>(def);
+      Vec4 hig = grex::shuffle<1_sh, 2_sh, 0_sh, 3_sh>(ghi);
+      Vec4 igh = grex::shuffle<2_sh, 0_sh, 1_sh, 3_sh>(ghi);
 
-        // Because ghi[3] == 0, both (efd * igh)[3] == 0 and (fde * hig)[3] == 0
-        Vec4 c0 = stado::mul_sub(efd, igh, fde * hig);
-        Vec4 c1 = stado::mul_sub(cab, hig, bca * igh);
-        Vec4 c2 = stado::mul_sub(bca, fde, cab * efd);
+      // Because ghi[3] == 0, both (efd * igh)[3] == 0 and (fde * hig)[3] == 0
+      Vec4 c0 = grex::fmsub(efd, igh, fde * hig);
+      Vec4 c1 = grex::fmsub(cab, hig, bca * igh);
+      Vec4 c2 = grex::fmsub(bca, fde, cab * efd);
 
-        auto det = abc * c0;
-        det += stado::permute4<1, 0, 3, 2>(det);
-        det += stado::permute4<2, 3, 0, 1>(det);
+      auto det = abc * c0;
+      det += grex::shuffle<1_sh, 0_sh, 3_sh, 2_sh>(det);
+      det += grex::shuffle<2_sh, 3_sh, 0_sh, 1_sh>(det);
 
-        auto out = stado::mul_add(c2, b2, stado::mul_add(c1, b1, c0 * b0)) / det;
-        return TSol{
-          out.template extract<0>(),
-          out.template extract<1>(),
-          out.template extract<2>(),
-        };
-      }
+      auto out = grex::fmadd(c2, Vec4{b2}, grex::fmadd(c1, Vec4{b1}, c0 * Vec4{b0})) / det;
+      return TSol{out[0], out[1], out[2]};
     }
 
     const auto inv00 = e * i - f * h;

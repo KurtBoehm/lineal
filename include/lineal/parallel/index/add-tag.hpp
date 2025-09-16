@@ -20,7 +20,7 @@ struct TagAdder {
 };
 
 template<OptIndexTag TIdxTag, typename TInType>
-inline constexpr auto add_tag(TInType input) {
+constexpr auto add_tag(TInType input) {
   return TagAdder<TInType, TIdxTag>::convert(input);
 }
 } // namespace lineal
