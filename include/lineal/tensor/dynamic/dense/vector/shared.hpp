@@ -36,7 +36,6 @@ template<typename TValue, typename TSize, std::size_t tPadding, typename TAlloca
          OptDistributedInfo TDistInfo = void>
 struct DenseVectorBase : public SharedVectorBase {
   using Value = TValue;
-  using Field = Value;
   using Size = TSize;
   using Allocator = TAllocator;
   static constexpr std::size_t padding = tPadding;
@@ -86,7 +85,7 @@ public:
     explicit ConstIterator(const Iterator& other)
         : ptr_{other.ptr_}, dist_info_{other.dist_info_} {}
 
-    auto compute(grex::AnyTag auto tag) const {
+    auto compute(TensorTag<Value> auto tag) const {
       return load_ptr(ptr_, tag);
     }
 
@@ -105,12 +104,12 @@ public:
     explicit Iterator(Value* ptr, DistributedInfoStoragePtr dist_info)
         : ptr_(ptr), dist_info_(dist_info) {}
 
-    auto compute(grex::AnyTag auto tag) const {
+    auto compute(TensorTag<Value> auto tag) const {
       return load_ptr(ptr_, tag);
     }
 
-    void store(auto vector, grex::AnyTag auto tag) {
-      grex::store(ptr_, vector, tag);
+    void store(auto vector, TensorTag<Value> auto tag) {
+      compat::store(ptr_, vector, tag);
     }
 
   private:
@@ -278,35 +277,36 @@ public:
   }
 
   decltype(auto) compute(TypedIndex<is_shared, Size, GlobalSize> auto i,
-                         grex::AnyTag auto tag) const {
+                         TensorTag<Value> auto tag) const {
     const auto index = index_value(i, local_index_tag, dist_info_);
     assert(index < size_);
     assert(grex::is_load_valid(size_ - index, tag));
     return load_ptr(data() + index, tag);
   }
-  decltype(auto) compute(TypedIndex<is_shared, Size, GlobalSize> auto i, grex::AnyTag auto tag) {
+  decltype(auto) compute(TypedIndex<is_shared, Size, GlobalSize> auto i,
+                         TensorTag<Value> auto tag) {
     const auto index = index_value(i, local_index_tag, dist_info_);
     assert(index < size_);
     assert(grex::is_load_valid(size_ - index, tag));
     return load_ptr(data() + index, tag);
   }
   // TODO
-  decltype(auto) compute(thes::AnyIndexPosition auto i, grex::AnyTag auto tag) const {
+  decltype(auto) compute(thes::AnyIndexPosition auto i, TensorTag<Value> auto tag) const {
     return compute(i.index, tag);
   }
-  decltype(auto) compute(thes::AnyIndexPosition auto i, grex::AnyTag auto tag) {
+  decltype(auto) compute(thes::AnyIndexPosition auto i, TensorTag<Value> auto tag) {
     return compute(i.index, tag);
   }
-  decltype(auto) lookup(auto idxs, grex::AnyTag auto tag) const {
+  decltype(auto) lookup(auto idxs, TensorTag<Value> auto tag) const {
     return grex::gather(span(), idxs, tag);
   }
 
-  void store(TypedIndex<is_shared, Size, GlobalSize> auto i, auto v, grex::AnyTag auto tag) {
+  void store(TypedIndex<is_shared, Size, GlobalSize> auto i, auto v, TensorTag<Value> auto tag) {
     const auto index = index_value(i, local_index_tag, dist_info_);
     grex::store(data() + index, v, tag);
   }
   // TODO
-  void store(thes::AnyIndexPosition auto i, auto v, grex::AnyTag auto tag) {
+  void store(thes::AnyIndexPosition auto i, auto v, TensorTag<Value> auto tag) {
     store(i.index, v, tag);
   }
 
@@ -325,13 +325,12 @@ public:
 
 private:
   template<typename TSrc>
-  requires std::same_as<std::remove_const_t<TSrc>, Value>
-  static decltype(auto) load_ptr(TSrc* src, grex::AnyTag auto tag) {
+  requires(std::same_as<std::remove_const_t<TSrc>, Value>)
+  static decltype(auto) load_ptr(TSrc* src, TensorTag<Value> auto tag) {
     if constexpr (tag.size <= padding) {
-      // TODO Mask this?
-      return grex::load_extended(src, tag);
+      return compat::load_extended(src, tag);
     } else {
-      return grex::load(src, tag);
+      return compat::load(src, tag);
     }
   }
 
@@ -348,7 +347,7 @@ private:
   [[no_unique_address]] DistributedInfoStorage dist_info_{};
 };
 
-template<typename TValue, typename TSize, std::size_t tPadding = grex::native_sizes<TValue>.back(),
+template<typename TValue, typename TSize, std::size_t tPadding = simd_pad_size<TValue>,
          typename TAllocator = thes::HugePagesAllocator<TValue>>
 struct DenseVector : public DenseVectorBase<TValue, TSize, tPadding, TAllocator> {
   using Base = DenseVectorBase<TValue, TSize, tPadding, TAllocator>;

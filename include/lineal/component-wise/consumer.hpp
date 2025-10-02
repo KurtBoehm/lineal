@@ -57,7 +57,9 @@ struct ConsumerSink<thes::TypeSeq<TConsumers...>, TChildren...> {
     ~ThreadInstance() = default;
 
     THES_ALWAYS_INLINE constexpr void compute_iter(grex::AnyTag auto tag, const auto& children,
-                                                   auto... iters) {
+                                                   auto... iters)
+    requires((... && requires { iters.compute(tag); }))
+    {
       const thes::Tuple values{iters.compute(tag)...};
       thes::star::static_apply<sizeof...(TInstances)>(
         [&]<std::size_t... tI>() { (..., get<tI>(instances_).compute(tag, children, values)); });

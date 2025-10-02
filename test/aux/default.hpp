@@ -28,11 +28,19 @@
 #include "lineal/vectorization.hpp"
 
 namespace lineal::test {
+template<std::size_t tBlockSize = 0>
 struct DefaultSharedDefs {
   using Self = DefaultSharedDefs;
 
   using Real = thes::f64;
+  using MatValue =
+    std::conditional_t<tBlockSize == 0, Real, fix::DenseMatrix<Real, tBlockSize, tBlockSize>>;
+  using VecValue = std::conditional_t<tBlockSize == 0, Real, fix::DenseVector<Real, tBlockSize>>;
   using LoReal = thes::f32;
+  using LoMatValue =
+    std::conditional_t<tBlockSize == 0, LoReal, fix::DenseMatrix<LoReal, tBlockSize, tBlockSize>>;
+  using LoVecValue =
+    std::conditional_t<tBlockSize == 0, LoReal, fix::DenseVector<LoReal, tBlockSize>>;
   using SizeByte = thes::ByteInteger<4>;
   using Size = SizeByte::Unsigned;
   using NonZeroSizeByte = thes::ByteInteger<5>;
@@ -44,7 +52,11 @@ struct DefaultSharedDefs {
 
   struct BaseDefs {
     using Real = Self::Real;
+    using MatValue = Self::MatValue;
+    using VecValue = Self::VecValue;
     using LoReal = Self::LoReal;
+    using LoMatValue = Self::LoMatValue;
+    using LoVecValue = Self::LoVecValue;
     using SizeByte = Self::SizeByte;
     using Size = Self::Size;
     using NonZeroSizeByte = Self::NonZeroSizeByte;
@@ -61,8 +73,7 @@ struct DefaultSharedDefs {
 
   using LookupSymmetricDiffInfo = LookupSymmetricDiffusionInfo<BaseDefs>;
   template<typename TReal>
-  using DenseVector =
-    lineal::DenseVector<TReal, Size, grex::native_sizes<TReal>.back(), Alloc<TReal>>;
+  using DenseVector = lineal::DenseVector<TReal, Size, simd_pad_size<TReal>, Alloc<TReal>>;
 
   struct Defs : public BaseDefs {
     using SystemInfo = const LookupSymmetricDiffInfo&;
@@ -70,8 +81,8 @@ struct DefaultSharedDefs {
     using MaterialIndices = const CellStorage<CellInfo, Alloc<CellInfo>>&;
     using LookupWright = SymmetricDiffusionLookupWright;
 
-    using HiVector = DenseVector<Real>;
-    using LoVector = DenseVector<LoReal>;
+    using HiVector = DenseVector<VecValue>;
+    using LoVector = DenseVector<LoVecValue>;
   };
 
   using LookupValuatorZero = StationaryDiffusionLookupValuator<Defs, ZeroToZeroTag, void>;
@@ -99,15 +110,15 @@ struct DefaultSharedDefs {
   template<bool tIsShared>
   using FileAggregator = amg::FileAggregator<AggMap<tIsShared>>;
 
-  template<bool tIsShared>
-  using HomoMatAggregator = amg::MatrixAggregator<DepDetective, HomoAggregator<tIsShared>,
-                                                  amg::NegativeOffdiagonalTransform, ByteAlloc>;
-  template<bool tIsShared>
-  using RefiMatAggregator = amg::MatrixAggregator<DepDetective, RefiAggregator<tIsShared>,
-                                                  amg::NegativeOffdiagonalTransform, ByteAlloc>;
-  template<bool tIsShared>
-  using FileMatAggregator = amg::MatrixAggregator<DepDetective, FileAggregator<tIsShared>,
-                                                  amg::NegativeOffdiagonalTransform, ByteAlloc>;
+  template<bool tIsShared, typename TTransform>
+  using HomoMatAggregator =
+    amg::MatrixAggregator<DepDetective, HomoAggregator<tIsShared>, TTransform, ByteAlloc>;
+  template<bool tIsShared, typename TTransform>
+  using RefiMatAggregator =
+    amg::MatrixAggregator<DepDetective, RefiAggregator<tIsShared>, TTransform, ByteAlloc>;
+  template<bool tIsShared, typename TTransform>
+  using FileMatAggregator =
+    amg::MatrixAggregator<DepDetective, FileAggregator<tIsShared>, TTransform, ByteAlloc>;
 
   template<typename TThreadNum = thes::Empty,
            thes::AnyIndexTag TVecSize = thes::IndexTag<grex::native_sizes<Real>.back()>,
@@ -138,13 +149,14 @@ struct DefaultSharedDefs {
     return Environment{std::in_place, mkexpo, JsonLogger{thes::Indentation{2}, unflush_tag}};
   }
 
-  template<AnyVector TFineVec, AnyMatrix TCoarseMat, AnyVector TCoarseVec, IsSymmetric tIsSymmetric>
+  template<AnyVector TFineVec, AnyMatrix TCoarseMat, AnyVector TCoarseVec, IsSymmetric tIsSymmetric,
+           lineal::SorVariant tSorVariant = lineal::SorVariant::ultra,
+           typename TTransform = amg::NegativeOffdiagonalTransform>
   static auto make_wright() {
     static constexpr bool is_shared = SharedTensors<TCoarseMat, TCoarseVec>;
-    static constexpr auto sor_var = lineal::SorVariant::ultra;
 
-    using PreSmoother = lineal::SorSolver<Real, void, lineal::forward_tag, sor_var>;
-    using PostSmoother = lineal::SorSolver<Real, void, lineal::backward_tag, sor_var>;
+    using PreSmoother = lineal::SorSolver<Real, void, lineal::forward_tag, tSorVariant>;
+    using PostSmoother = lineal::SorSolver<Real, void, lineal::backward_tag, tSorVariant>;
     using CoarseSolver = std::conditional_t<tIsSymmetric == IsSymmetric{true},
                                             lineal::CholeskySolver<Real, TCoarseMat>,
                                             lineal::LuSolver<Real, TCoarseMat>>;
@@ -162,7 +174,7 @@ struct DefaultSharedDefs {
       /*min_coarsen_factor=*/1.2,
     }};
     return wright.instantiate(
-      HomoMatAggregator<is_shared>{
+      HomoMatAggregator<is_shared, TTransform>{
         DepDetective{{
           /*strong_threshold=*/1.0 / 3.0,
           /*aggressive_strong_threshold=*/1.0 / 3.0,

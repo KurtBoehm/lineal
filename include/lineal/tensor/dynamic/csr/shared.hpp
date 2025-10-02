@@ -67,7 +67,7 @@ struct CsrMatrixBase : public SharedMatrixBase {
   using ColumnIdx = ExtRowIdx;
 
   using Entries = thes::DynamicArray<Value, thes::DefaultInit, thes::DoublingGrowth, Alloc>;
-  static constexpr std::size_t entry_pad = grex::native_sizes<Value>.back();
+  static constexpr std::size_t entry_pad = simd_pad_size<Value>;
 
 private:
   struct ColIterProvider {
@@ -684,6 +684,8 @@ public:
   template<typename TReal, AnyUniquenessTag TUniqueness, OptIndexTag TIndex>
   struct MultithreadBuilder {
     using Real = TReal;
+    using Scalar = ScalarType<Real>;
+    using RealValue = WithScalarType<Value, Real>;
     using Matrix = CsrMatrixBase;
     using Self = MultithreadBuilder;
     using Idx = OptIndex<is_shared, Size, TIndex>;
@@ -734,12 +736,12 @@ public:
 
           auto it = std::find(col_start, col_end, raw_idx);
           if (it != col_end) [[unlikely]] {
-            tmp_entries_[*thes::safe_cast<Size>(it - col_start)] += Real(value);
+            tmp_entries_[*thes::safe_cast<Size>(it - col_start)] += compat::cast<Real>(value);
             return;
           }
         }
         col_start[non_zero_off_] = raw_idx;
-        tmp_entries_.push_back(Real(value));
+        tmp_entries_.push_back(compat::cast<Real>(value));
         ++non_zero_off_;
       }
 
@@ -754,7 +756,7 @@ public:
         assert(std::is_sorted(col_start, col_start + non_zero_off_));
 
         std::transform(tmp_entries_.begin(), tmp_entries_.end(), vals_begin_ + non_zero_row_,
-                       [](Real v) THES_ALWAYS_INLINE { return Value(v); });
+                       [](RealValue v) THES_ALWAYS_INLINE { return compat::cast<Scalar>(v); });
 
         non_zero_row_ = non_zero_current();
         non_zero_off_ = 0;
@@ -768,7 +770,7 @@ public:
         return non_zero_row_ + non_zero_off_;
       }
 
-      thes::DynamicArray<Real> tmp_entries_{};
+      thes::DynamicArray<RealValue> tmp_entries_{};
 
       NonZeroSize non_zero_row_;
       NonZeroSize non_zero_off_{0};
@@ -1079,13 +1081,13 @@ private:
     if (col_it != row_col_end && *col_it == raw_col) [[likely]] {
       return entries[*thes::safe_cast<NonZeroSize>(col_it - col_begin)];
     }
-    return 0;
+    return compat::zero<Value>();
   }
 
   static Value diagonal_at_impl(const ExtRowIdx index, const RowOffsets& row_offs,
                                 const ColumnIndices& col_idxs, const Entries& entries) {
     const auto v = entry_at_impl(index, index, row_offs, col_idxs, entries);
-    assert(v != 0);
+    assert(v != compat::zero<Value>());
     return v;
   }
 

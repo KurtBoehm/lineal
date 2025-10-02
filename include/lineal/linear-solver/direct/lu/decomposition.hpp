@@ -25,6 +25,8 @@ struct LuDecomposer {
   using ColumnIdx = thes::TypeSeq<typename TMat::ColumnIdx, typename TLuMat::ColumnIdx>::Unique;
 
   using OutValue = TLuMat::Value;
+  using OutScalar = ScalarType<OutValue>;
+  using MatWork = WithScalarType<typename TMat::Value, Real>;
 
   static constexpr std::pair<TLuMat, TLuMat> decompose(const TMat& matrix) {
     using Builder = TLuMat::RowWiseBuilder;
@@ -37,7 +39,7 @@ struct LuDecomposer {
 
     // TODO merge with the column indices?
     // that would add at least one case distinction in return for reducing memory consumption
-    ankerl::unordered_dense::map<Size, Real> new_values{};
+    ankerl::unordered_dense::map<Size, MatWork> new_values{};
     ankerl::unordered_dense::set<Size> l_new_cidxs{};
     ankerl::unordered_dense::set<Size> u_new_cidxs{};
 
@@ -47,10 +49,10 @@ struct LuDecomposer {
       row.iterate(
         [&](ColumnIdx j, auto v) {
           const auto jval = index_value(j);
-          new_values.emplace(jval, Real(v));
+          new_values.emplace(jval, compat::cast<Real>(v));
           if (jval < i) {
             l_new_cidxs.emplace(jval);
-          } else {
+          } else if (jval > i) {
             u_new_cidxs.emplace(jval);
           }
         },
@@ -65,8 +67,10 @@ struct LuDecomposer {
         const auto uj_it = uj_row.begin();
         assert(uj_it.index() == ColumnIdx{lj});
         const auto ujdiag = *uj_it;
-        const Real lval = new_values.extract(lj).value().second / Real(ujdiag);
-        lbld.insert(ColumnIdx{lj}, OutValue(lval));
+        const MatWork lval =
+          compat::solve_right_tri<Real>(ujdiag, new_values.extract(lj).value().second,
+                                        tri_upper_tag, lhs_has_unit_diagonal_tag<false>);
+        lbld.insert(ColumnIdx{lj}, compat::cast<OutScalar>(lval));
 
         // TODO split into ante-diagonal/diagonal/post-diagonal functions?
         // this increases the generate code size, but removes the inner if
@@ -78,7 +82,7 @@ struct LuDecomposer {
               first = false;
               return;
             }
-            const Real sub = lval * Real(uv);
+            const auto sub = lval * compat::cast<Real>(uv);
             auto it = new_values.find(ujval);
             if (it != new_values.end()) {
               it->second -= sub;
@@ -87,7 +91,7 @@ struct LuDecomposer {
 
               if (ujval < i) {
                 l_new_cidxs.emplace(ujval);
-              } else {
+              } else if (ujval > i) {
                 u_new_cidxs.emplace(ujval);
               }
             }
@@ -95,12 +99,17 @@ struct LuDecomposer {
           lineal::valued_tag, lineal::unordered_tag);
       }
 
-      // TODO avoid storing this and implicitly assume it is there?
-      lbld.insert(ColumnIdx{i}, 1);
+      // handle the diagonal element
+      const MatWork new_diag = new_values.extract(i).value().second;
+      const auto lu = compat::lu_decompose<Real>(new_diag);
+      lbld.insert(ColumnIdx{i}, compat::cast<OutScalar>(lu.lower()));
       ++lbld;
+      ubld.insert(ColumnIdx{i}, compat::cast<OutScalar>(lu.upper()));
 
       for (const Size cidx : u_new_cidxs) {
-        ubld.insert(ColumnIdx{cidx}, OutValue(new_values[cidx]));
+        const auto val = compat::solve_tri<Real>(lu.lower(), new_values[cidx], tri_lower_tag,
+                                                 lhs_has_unit_diagonal_tag<true>);
+        ubld.insert(ColumnIdx{cidx}, compat::cast<OutScalar>(val));
       }
       ++ubld;
 

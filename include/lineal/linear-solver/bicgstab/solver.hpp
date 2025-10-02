@@ -45,6 +45,9 @@ struct BiCgStabSolver : public SharedNonStationaryIterativeSolverBase,
 
     template<AnyVector TSol, AnyVector TRhs>
     struct SystemInstance {
+      using Sol = std::decay_t<TSol>;
+      using SolValue = Sol::Value;
+
       SystemInstance(Instance& parent, TSol&& sol, TRhs&& rhs, const Env auto& env)
           : parent_(&parent), sol_(std::forward<TSol>(sol)), rhs_(std::forward<TRhs>(rhs)),
             r_(create_numa_undef_like<HiVector>(parent.lhs_, env)),
@@ -76,7 +79,8 @@ struct BiCgStabSolver : public SharedNonStationaryIterativeSolverBase,
         {
           auto& y = [&]() -> auto& {
             if constexpr (has_preconditioner) {
-              parent_->precon_inst_.apply(constant_like(sol_, Real{0}), px_, p_, precon_aux_, env);
+              parent_->precon_inst_.apply(constant_like(sol_, compat::zero<SolValue>()), px_, p_,
+                                          precon_aux_, env);
               return px_;
             } else {
               return p_;
@@ -99,7 +103,8 @@ struct BiCgStabSolver : public SharedNonStationaryIterativeSolverBase,
         {
           auto& z = [&]() -> auto& {
             if constexpr (has_preconditioner) {
-              parent_->precon_inst_.apply(constant_like(sol_, Real{0}), px_, r_, precon_aux_, env);
+              parent_->precon_inst_.apply(constant_like(sol_, compat::zero<SolValue>()), px_, r_,
+                                          precon_aux_, env);
               return px_;
             } else {
               return r_;

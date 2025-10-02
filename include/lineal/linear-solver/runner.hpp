@@ -57,7 +57,13 @@ inline auto run_iterative_solver(const TSolver& solver, const AnyMatrix auto& lh
     }();
     auto envi = env_wrap();
     auto envii = env_iters(envi);
-    for (std::size_t i = 0;; ++i) {
+    {
+      decltype(auto) enviii = env_iter(envii);
+      if (decltype(auto) res = iter_op(0ZU, system_instance, enviii); res.has_value()) {
+        return *res;
+      }
+    }
+    for (std::size_t i = 1;; ++i) {
       decltype(auto) enviii = env_iter(envii);
       system_instance.iterate(enviii);
       if (decltype(auto) res = iter_op(i, system_instance, enviii); res.has_value()) {

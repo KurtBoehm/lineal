@@ -15,15 +15,16 @@
 #include "thesauros/utility.hpp"
 
 #include "lineal/base.hpp"
+#include "lineal/base/concept/grex.hpp"
 #include "lineal/component-wise/facade.hpp"
 #include "lineal/vectorization.hpp"
 
 namespace lineal {
 namespace detail {
-template<typename TReal>
+template<typename TReal, typename TRhs>
 struct MatrixVectorProductExprConf {
   using Work = void;
-  using Value = TReal;
+  using Value = WithScalarType<typename std::decay_t<TRhs>::Value, TReal>;
   static constexpr bool custom_range = true;
   static constexpr auto component_wise_seq = thes::Tuple{thes::index_tag<0>};
   static constexpr auto custom_local_seq = thes::Tuple{thes::index_tag<0>, thes::index_tag<1>};
@@ -33,21 +34,23 @@ struct MatrixVectorProductExprConf {
 template<typename TReal, AnyMatrix TLhs, AnyVector TRhs>
 struct MatrixVectorProductExpr
     : public facades::ComponentWiseOp<MatrixVectorProductExpr<TReal, TLhs, TRhs>,
-                                      detail::MatrixVectorProductExprConf<TReal>, TLhs, TRhs> {
-  using Parent = facades::ComponentWiseOp<MatrixVectorProductExpr<TReal, TLhs, TRhs>,
-                                          detail::MatrixVectorProductExprConf<TReal>, TLhs, TRhs>;
+                                      detail::MatrixVectorProductExprConf<TReal, TRhs>, TLhs,
+                                      TRhs> {
+  using Conf = detail::MatrixVectorProductExprConf<TReal, TRhs>;
+  using Parent =
+    facades::ComponentWiseOp<MatrixVectorProductExpr<TReal, TLhs, TRhs>, Conf, TLhs, TRhs>;
 
-  using Value = TReal;
   using Real = TReal;
   using Lhs = std::decay_t<TLhs>;
   using Rhs = std::decay_t<TRhs>;
+  using Value = Conf::Value;
   using Size = SizeIntersection<Lhs, Rhs>;
   static constexpr bool is_shared = SharedTensors<TLhs, TRhs>;
 
   explicit MatrixVectorProductExpr(TLhs&& lhs, TRhs&& rhs)
       : Parent(std::forward<TLhs>(lhs), std::forward<TRhs>(rhs)) {}
 
-  template<grex::AnyTag TTag>
+  template<TensorTag<Value> TTag>
   THES_ALWAYS_INLINE auto compute_impl(TTag tag, const auto& children, auto get_row,
                                        auto get_row_off) const {
     const auto& rhs = thes::star::get_at<1>(children);
@@ -68,10 +71,11 @@ struct MatrixVectorProductExpr
     } else {
       return grex::transform(
         [&](auto i) THES_ALWAYS_INLINE {
-          Real sum = 0;
+          Value sum = compat::zero<Value>();
           get_row_off(i).iterate(
-            [&](auto j, auto val)
-              THES_ALWAYS_INLINE { sum = std::fma(Real(val), Real(rhs[j]), sum); },
+            [&](auto j, auto val) THES_ALWAYS_INLINE {
+              sum = compat::fmadd(compat::cast<Real>(val), compat::cast<Real>(rhs[j]), sum);
+            },
             valued_tag, unordered_tag);
           return sum;
         },
@@ -79,14 +83,14 @@ struct MatrixVectorProductExpr
     }
   }
 
-  THES_ALWAYS_INLINE auto compute_iter(grex::AnyTag auto tag, const auto& children,
+  THES_ALWAYS_INLINE auto compute_iter(TensorTag<Value> auto tag, const auto& children,
                                        auto lhs_it) const {
     return compute_impl(
       tag, children, [&]() THES_ALWAYS_INLINE { return *lhs_it; },
       [&](auto off) THES_ALWAYS_INLINE { return lhs_it[off]; });
   }
-  THES_ALWAYS_INLINE auto compute_base(grex::AnyTag auto tag, const auto& arg, const auto& children,
-                                       const auto& lhs) const {
+  THES_ALWAYS_INLINE auto compute_base(TensorTag<Value> auto tag, const auto& arg,
+                                       const auto& children, const auto& lhs) const {
     return compute_impl(
       tag, children, [&]() THES_ALWAYS_INLINE { return lhs[arg]; },
       [&](auto off) THES_ALWAYS_INLINE { return lhs[arg + Size{off}]; });
@@ -131,7 +135,7 @@ constexpr auto multiply(TLhs&& lhs, TRhs&& rhs) {
 }
 template<AnyMatrix TLhs, AnyVector TRhs>
 constexpr auto operator*(TLhs&& lhs, TRhs&& rhs) {
-  using Real = ValueUnion<TLhs, TRhs>;
+  using Real = ScalarUnion<TLhs, TRhs>;
   return multiply<Real>(std::forward<TLhs>(lhs), std::forward<TRhs>(rhs));
 }
 } // namespace lineal

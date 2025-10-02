@@ -49,7 +49,7 @@ struct AccumulationConsumer<TReal, TComponentOp, TMergeOp, TPostOp, std::index_s
     }
 
     THES_ALWAYS_INLINE constexpr void compute(auto tag, const auto& /*children*/, auto values) {
-      component_op_(tag, thread_sum_, grex::convert_unsafe<TReal>(get<tIdxs>(values))...);
+      component_op_(tag, thread_sum_, compat::cast<TReal>(get<tIdxs>(values))...);
       // thread_sum_ += op_(values..., tag);
     }
 
@@ -125,38 +125,41 @@ constexpr TReal accumulate(TOp op, TPostOp post, const auto& expo, TVecs&&... ve
                          expo, std::forward<TVecs>(vecs)...);
 }
 
-inline constexpr auto euclidean_impl = [](auto value, auto tag) { return tag.mask(value * value); };
+template<typename TReal>
+inline constexpr auto euclidean_impl =
+  [](auto value, auto tag) { return tag.mask(compat::euclidean_squared<TReal>(value)); };
 } // namespace detail
 
 template<typename TReal, std::size_t tI, typename TDistInfo = thes::Empty>
 constexpr auto euclidean_squared_consumer(TDistInfo&& dist_info = {}) {
   return detail::accumulate_consumer<TReal>(
-    std::index_sequence<tI>{}, detail::euclidean_impl, [](TReal v) { return v; },
+    std::index_sequence<tI>{}, detail::euclidean_impl<TReal>, [](TReal v) { return v; },
     std::forward<TDistInfo>(dist_info));
 }
 template<typename TReal, std::size_t tI, typename TDistInfo = thes::Empty>
 constexpr auto euclidean_norm_consumer(TDistInfo&& dist_info = {}) {
   return detail::accumulate_consumer<TReal>(
-    std::index_sequence<tI>{}, detail::euclidean_impl, [](TReal v) { return grex::sqrt(v); },
+    std::index_sequence<tI>{}, detail::euclidean_impl<TReal>, [](TReal v) { return grex::sqrt(v); },
     std::forward<TDistInfo>(dist_info));
 }
 template<typename TReal, std::size_t tI, typename TDistInfo = thes::Empty>
 constexpr auto inv_euclidean_norm_consumer(TDistInfo&& dist_info = {}) {
   return detail::accumulate_consumer<TReal>(
-    std::index_sequence<tI>{}, detail::euclidean_impl, [](TReal v) { return thes::fast::rsqrt(v); },
-    std::forward<TDistInfo>(dist_info));
+    std::index_sequence<tI>{}, detail::euclidean_impl<TReal>,
+    [](TReal v) { return thes::fast::rsqrt(v); }, std::forward<TDistInfo>(dist_info));
 }
 template<typename TReal, std::size_t tI, std::size_t tJ, typename TDistInfo = thes::Empty>
 constexpr auto dot_consumer(TDistInfo&& dist_info = {}) {
   return detail::accumulate_consumer<TReal>(
     std::index_sequence<tI, tJ>{},
-    /*component=*/[](auto val1, auto val2, auto tag) { return tag.mask(val1 * val2); },
+    /*component=*/
+    [](auto val1, auto val2, auto tag) { return tag.mask(compat::dot<TReal>(val1, val2)); },
     /*post=*/[](TReal v) { return v; }, std::forward<TDistInfo>(dist_info));
 }
 template<typename TReal, std::size_t tI, typename TDistInfo = thes::Empty>
-constexpr auto max_norm_consumer(const TDistInfo& /*dist_info*/ = {}) {
+constexpr auto max_norm_consumer(const TDistInfo& dist_info = {}) {
   auto component = [](grex::AnyTag auto tag, auto& thread_sum, auto value) {
-    thread_sum = grex::max(thread_sum, tag.mask(grex::abs(value)));
+    thread_sum = grex::max(thread_sum, tag.mask(compat::max_norm<TReal>(value)));
   };
   auto merge = [](auto&& sum, auto thread_sum, auto tag) {
     const auto max = grex::horizontal_max(thread_sum, tag);

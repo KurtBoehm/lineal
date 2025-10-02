@@ -45,9 +45,14 @@ struct fmt::formatter<lineal::VectorPrinter<TVec>>
       auto range_print = [&](const auto& range) {
         it = fmt::format_to(it, "[");
         for (thes::Delimiter d{", "}; const auto v : range) {
-          it = fmt::format_to(
-            it, "{}{}", d,
-            fmt::styled(this->nested(v), thes::rainbow_fg(static_cast<std::size_t>(v))));
+          const auto fg = [&] {
+            if constexpr (requires { std::size_t(v); }) {
+              return thes::rainbow_fg(std::size_t(v));
+            } else {
+              return thes::fg_blue;
+            }
+          }();
+          it = fmt::format_to(it, "{}{}", d, fmt::styled(this->nested(v), fg));
         }
         return fmt::format_to(it, "]");
       };

@@ -25,7 +25,8 @@ namespace lineal {
 template<typename TReal, AnyVector TVec, typename TAggMap>
 struct SharedVectorCoarsener {
   using Vec = std::decay_t<TVec>;
-  using VecReal = Vec::Value;
+  using VecValue = Vec::Value;
+  using Value = WithScalarType<VecValue, TReal>;
   using AggregatesMap = std::decay_t<TAggMap>;
 
   using Size = AggregatesMap::Size;
@@ -33,7 +34,7 @@ struct SharedVectorCoarsener {
   using Aggregate = AggregatesMap::Aggregate;
 
   struct Conf {
-    using Value = TReal;
+    using Value = SharedVectorCoarsener::Value;
     using Size = SharedVectorCoarsener::Size;
     using IndexTag = OwnIndexTag;
 
@@ -45,8 +46,8 @@ struct SharedVectorCoarsener {
         : fine_vector_(std::forward<TVec>(fine_vector)),
           aggregates_map_(std::forward<TAggMap>(aggregates_map)) {}
 
-    THES_ALWAYS_INLINE constexpr TReal compute_impl(grex::ScalarTag /*tag*/, Size index) const {
-      TReal sum = 0;
+    THES_ALWAYS_INLINE constexpr Value compute_impl(grex::ScalarTag /*tag*/, Size index) const {
+      Value sum = compat::zero<Value>();
       for (decltype(auto) vertex :
            aggregates_map_.coarse_row_to_fine_rows(Aggregate{Index{index}})) {
         sum += fine_vector_[vertex];
@@ -96,7 +97,7 @@ static constexpr void coarsen_vector(TCoarseVec&& coarse_vector, TFineVec&& fine
 template<AnyVector TVec, typename TAggMap>
 struct SharedVectorRefiner {
   using Vec = std::decay_t<TVec>;
-  using VecReal = Vec::Value;
+  using VecValue = Vec::Value;
   using GlobalSize = Vec::GlobalSize;
   using AggregatesMap = std::decay_t<TAggMap>;
 
@@ -104,7 +105,7 @@ struct SharedVectorRefiner {
   using Aggregate = AggregatesMap::Aggregate;
 
   struct Conf {
-    using Value = VecReal;
+    using Value = VecValue;
     using Size = SharedVectorRefiner::Size;
     using IndexTag = OwnIndexTag;
 
@@ -121,13 +122,14 @@ struct SharedVectorRefiner {
                                                    AnyTypedIndex<Size, GlobalSize> auto idx) const {
       const auto aggregate =
         aggregates_map_[index_value(idx, own_index_tag, derived().distributed_info_storage())];
-      return aggregate.is_aggregate() ? coarse_vector_[aggregate.index()] : 0;
+      return aggregate.is_aggregate() ? coarse_vector_[aggregate.index()]
+                                      : compat::zero<VecValue>();
     }
     THES_ALWAYS_INLINE constexpr auto compute_impl(grex::AnyVectorTag auto tag,
                                                    AnyTypedIndex<Size, GlobalSize> auto idx) const {
       const auto agg = aggregates_map_.load(
         index_value(idx, own_index_tag, derived().distributed_info_storage()), tag);
-      const auto is_agg = grex::convert_safe<VecReal>(agg.is_aggregate());
+      const auto is_agg = grex::convert_safe<VecValue>(agg.is_aggregate());
       return grex::mask_gather(std::as_const(coarse_vector_).span(), is_agg, *agg, tag);
     }
 

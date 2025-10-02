@@ -27,6 +27,9 @@ template<AnyMatrix TFinestLhs, AnyMatrix TCoarseLhs, AnyVector TCoarseRhs, AnyVe
          typename TCoarsestSolverInst>
 struct Hierarchy {
   using FinestLhs = TFinestLhs;
+  using CoarseSol = TCoarseSol;
+  using FinestAuxVector = TFinestAuxVec;
+  using CoarseAuxVector = TCoarseAuxVec;
   using FinestPreSmootherInstance = TFinestPreSmootherInst;
   using FinestPostSmootherInstance = TFinestPostSmootherInst;
 
@@ -46,8 +49,6 @@ struct Hierarchy {
              std::decay_t<TCoarsePostSmootherInst>::in_situ_aux_size);
   static constexpr std::size_t coarsest_aux_num = std::decay_t<TCoarsestSolverInst>::aux_size;
 
-  using FinestAuxVector = TFinestAuxVec;
-  using CoarseAuxVector = TCoarseAuxVec;
   using FinestAux = std::array<FinestAuxVector, finest_aux_num>;
   using CoarseAux = std::array<CoarseAuxVector, coarse_aux_num>;
   using CoarseAuxHierarchy = thes::FixedAllocArray<CoarseAux>;

@@ -44,6 +44,9 @@ struct ConjugateGradientsSolver : public SharedNonStationaryIterativeSolverBase,
 
     template<AnyVector TSol, AnyVector TRhs>
     struct SystemInstance {
+      using Sol = std::decay_t<TSol>;
+      using SolValue = Sol::Value;
+
       SystemInstance(Instance& parent, TSol&& sol, TRhs&& rhs, const Env auto& env)
           : parent_(&parent), sol_(std::forward<TSol>(sol)), rhs_(std::forward<TRhs>(rhs)),
             residual_(create_numa_undef_like<HiVector>(parent.lhs_, env)),
@@ -57,8 +60,8 @@ struct ConjugateGradientsSolver : public SharedNonStationaryIterativeSolverBase,
             assign_expr(residual_, subtract<Real>(rhs_, multiply<Real>(parent_->lhs_, sol_))),
             expo);
 
-          parent_->precon_inst_.apply(constant_like(sol_, Real{0}), direction_, residual_,
-                                      precon_aux_, env);
+          parent_->precon_inst_.apply(constant_like(sol_, compat::zero<SolValue>()), direction_,
+                                      residual_, precon_aux_, env);
           rho_ = dot<Real>(direction_, residual_, expo);
         } else {
           assign(direction_,
@@ -97,8 +100,8 @@ struct ConjugateGradientsSolver : public SharedNonStationaryIterativeSolverBase,
         const Real old_rho = rho_;
         if constexpr (has_precon_inst) {
           auto& preconditioned = helper_;
-          parent_->precon_inst_.apply(constant_like(sol_, Real{0}), preconditioned, residual_,
-                                      precon_aux_, env);
+          parent_->precon_inst_.apply(constant_like(sol_, compat::zero<SolValue>()), preconditioned,
+                                      residual_, precon_aux_, env);
           rho_ = dot<Real>(residual_, preconditioned, expo);
           const Real beta = rho_ / old_rho;
           assign(direction_, add<Real>(preconditioned, scale<Real>(direction_, beta)), expo);

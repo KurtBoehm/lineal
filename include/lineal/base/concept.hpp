@@ -3,7 +3,9 @@
 
 // IWYU pragma: begin_exports
 #include "concept/environment.hpp"
+#include "concept/grex.hpp"
 #include "concept/range.hpp"
+#include "concept/scalar.hpp"
 #include "concept/solver.hpp"
 #include "concept/transport-info.hpp"
 #include "concept/valuator.hpp"

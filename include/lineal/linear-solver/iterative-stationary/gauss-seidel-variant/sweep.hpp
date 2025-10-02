@@ -10,7 +10,6 @@
 #include <cassert>
 #include <cmath>
 #include <cstddef>
-#include <limits>
 #include <optional>
 #include <tuple>
 #include <type_traits>
@@ -34,6 +33,8 @@ namespace lineal {
 //        available at https://www.osti.gov/servlets/purl/1117969,
 //        and implemented in hypre in parcsr_ls/par_relax.h.
 enum struct SorVariant : thes::u8 { regular, ultra };
+inline constexpr SorVariant regular_sor = SorVariant::regular;
+inline constexpr SorVariant ultra_sor = SorVariant::ultra;
 
 namespace detail {
 namespace sor {
@@ -97,12 +98,14 @@ struct SorSweepSink
         SorSweepSink<TDistInfo, tVariant, tDir, TReal, TThreadInfo, TLhs, TSolIn, TSolOut, TRhs>,
         SorSweepConf, TLhs, TSolIn, TSolOut, TRhs> {
   using Real = TReal;
-  using Value = Real;
   using Lhs = std::decay_t<TLhs>;
   using Rhs = std::decay_t<TRhs>;
   using LhsValue = Lhs::Value;
+  using LhsWork = WithScalarType<LhsValue, Real>;
   using InValue = std::decay_t<TSolIn>::Value;
   using OutValue = std::decay_t<TSolOut>::Value;
+  using OutScalar = ScalarType<OutValue>;
+  using Work = WithScalarType<OutValue, Real>;
   static constexpr bool is_shared = std::is_void_v<TDistInfo>;
   static constexpr grex::IterDirection iter_dir =
     thes::StaticMap{
@@ -136,18 +139,20 @@ struct SorSweepSink
 
     const TSolIn& x_in = sol_in();
     TSolOut& x_out = sol_out();
-    Real accum = Real(rhs_val);
-    Real diag = std::numeric_limits<Real>::signaling_NaN();
-    Real div{};
+    Work accum = compat::cast<Real>(rhs_val);
+    LhsWork diag = compat::signaling_nan<LhsWork>();
+    LhsWork div{};
 
-    auto update = [&](LocalIdx j, Real aij, const auto& vec)
-                    THES_ALWAYS_INLINE { accum = grex::fnmadd(aij, Real(vec[j]), accum); };
-    auto update_conditional = [&](thes::AnyBoolTag auto is_conditional, LocalIdx j, Real aij)
+    auto update = [&](LocalIdx j, auto aij, const auto& vec) THES_ALWAYS_INLINE {
+      accum = compat::fnmadd(compat::cast<Real>(aij), compat::cast<Real>(vec[j]), accum);
+    };
+    auto update_conditional = [&](thes::AnyBoolTag auto is_conditional, LocalIdx j, auto aij)
                                 THES_ALWAYS_INLINE {
                                   bool contains{};
                                   if constexpr (tVariant == SorVariant::ultra || is_conditional) {
                                     contains = col_idxs.contains(index_value(j));
                                   }
+                                  // TODO I have no idea how to adapt this to block matrices/vectors
                                   if constexpr (tVariant == SorVariant::ultra) {
                                     div += contains ? Real{} : std::abs(aij);
                                   }
@@ -162,29 +167,31 @@ struct SorSweepSink
     lhs_row.iterate(
       // j < index
       [&](LocalIdx j, auto aij) THES_ALWAYS_INLINE {
-        update_conditional(thes::bool_tag<(tDir == forward_tag)>, j, Real(aij));
+        update_conditional(thes::bool_tag<(tDir == forward_tag)>, j, compat::cast<Real>(aij));
       },
       // j == index
       [&]([[maybe_unused]] LocalIdx j, auto aij) THES_ALWAYS_INLINE {
-        diag = Real(aij);
+        diag = compat::cast<Real>(aij);
         if constexpr (tVariant == SorVariant::ultra) {
-          update(j, Real(aij), x_in);
+          update(j, compat::cast<Real>(aij), x_in);
         }
         assert(col_idxs.contains(index_value(j)));
       },
       // j > index
       [&](LocalIdx j, auto aij) THES_ALWAYS_INLINE {
-        update_conditional(thes::bool_tag<(tDir == backward_tag)>, j, Real(aij));
+        update_conditional(thes::bool_tag<(tDir == backward_tag)>, j, compat::cast<Real>(aij));
       },
       valued_tag, unordered_tag);
 
     const LocalIdx i = lhs_row.ext_index();
-    assert(std::isfinite(diag));
+    assert(compat::is_finite(diag));
     if constexpr (tVariant == SorVariant::ultra) {
-      x_out[i] = OutValue(Real(x_in[i]) + relax_ * accum / (std::abs(diag) + 0.5 * div));
+      x_out[i] =
+        OutValue(compat::cast<Real>(x_in[i]) + relax_ * accum / (std::abs(diag) + 0.5 * div));
     } else {
-      const auto v = grex::fmadd(relax_, accum / diag, m1_relax_ * Real(x_in[i]));
-      x_out[i] = OutValue(v);
+      const auto quot = compat::solve<Real>(diag, accum);
+      const auto v = compat::fmadd(relax_, quot, m1_relax_ * compat::cast<Real>(x_in[i]));
+      x_out[i] = compat::cast<OutScalar>(v);
     }
   }
 
@@ -402,13 +409,17 @@ struct SorSweepSink
   }
 
   THES_ALWAYS_INLINE void compute_iter(grex::AnyTag auto tag, const auto& /*children*/, auto lhs_it,
-                                       auto rhs_it) {
+                                       auto rhs_it)
+  requires(requires { rhs_it.compute(tag); })
+  {
     compute_base([&](auto i) THES_ALWAYS_INLINE { return lhs_it[i]; },
                  [&](auto i) THES_ALWAYS_INLINE { return rhs_it[i]; },
                  [&]() THES_ALWAYS_INLINE { return rhs_it.compute(tag); }, tag);
   }
   THES_ALWAYS_INLINE void compute_base(grex::AnyTag auto tag, const auto& arg,
-                                       const auto& /*children*/, const auto& lhs, const auto& rhs) {
+                                       const auto& /*children*/, const auto& lhs, const auto& rhs)
+  requires(requires { rhs.compute(arg, tag); })
+  {
     compute_base([&](Size i) THES_ALWAYS_INLINE { return lhs[arg + i]; },
                  [&](Size i) THES_ALWAYS_INLINE { return rhs[arg + i]; },
                  [&]() THES_ALWAYS_INLINE { return rhs.compute(arg, tag); }, tag);

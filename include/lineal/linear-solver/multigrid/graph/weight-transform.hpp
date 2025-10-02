@@ -9,35 +9,68 @@
 
 #include "thesauros/macropolis.hpp"
 
+#include "lineal/tensor/fixed/matrix.hpp"
 #include "lineal/vectorization.hpp"
 
 namespace lineal::amg {
-struct NegativeOffdiagonalTransform {
-  THES_ALWAYS_INLINE static constexpr auto diagonal(const auto& value, grex::AnyTag auto /*tag*/) {
+struct NoOpTransform {
+  template<typename T>
+  using Value = T;
+
+  THES_ALWAYS_INLINE static constexpr auto diagonal(const auto& value) {
     return value;
   }
-  THES_ALWAYS_INLINE static constexpr auto offdiagonal(const auto& value,
-                                                       grex::AnyTag auto /*tag*/) {
+  THES_ALWAYS_INLINE static constexpr auto offdiagonal(const auto& value) {
+    return value;
+  }
+};
+
+struct NegativeOffdiagonalTransform {
+  template<typename T>
+  using Value = T;
+
+  THES_ALWAYS_INLINE static constexpr auto diagonal(const auto& value) {
+    return value;
+  }
+  THES_ALWAYS_INLINE static constexpr auto offdiagonal(const auto& value) {
     return -value;
   }
 };
 
 struct NegativeDiagonalTransform {
-  THES_ALWAYS_INLINE static constexpr auto diagonal(const auto& value, grex::AnyTag auto /*tag*/) {
+  template<typename T>
+  using Value = T;
+
+  THES_ALWAYS_INLINE static constexpr auto diagonal(const auto& value) {
     return -value;
   }
-  THES_ALWAYS_INLINE static constexpr auto offdiagonal(const auto& value,
-                                                       grex::AnyTag auto /*tag*/) {
+  THES_ALWAYS_INLINE static constexpr auto offdiagonal(const auto& value) {
     return value;
   }
 };
 
 struct AbsTransform {
-  THES_ALWAYS_INLINE static constexpr auto diagonal(const auto& value, grex::AnyTag auto tag) {
-    return grex::abs(value, tag);
+  template<typename T>
+  using Value = T;
+
+  THES_ALWAYS_INLINE static constexpr auto diagonal(const auto& value) {
+    return grex::abs(value);
   }
-  THES_ALWAYS_INLINE static constexpr auto offdiagonal(const auto& value, grex::AnyTag auto tag) {
-    return grex::abs(value, tag);
+  THES_ALWAYS_INLINE static constexpr auto offdiagonal(const auto& value) {
+    return grex::abs(value);
+  }
+};
+
+template<typename TReal>
+struct FrobeniusTransform {
+  template<typename T>
+  using Value = TReal;
+
+  THES_ALWAYS_INLINE static constexpr auto diagonal(const auto& value) {
+    return fix::frobenius_norm<TReal>(value);
+  }
+  THES_ALWAYS_INLINE static constexpr auto offdiagonal(const auto& value) {
+    return fix::frobenius_norm<TReal>(value);
   }
 };
 } // namespace lineal::amg

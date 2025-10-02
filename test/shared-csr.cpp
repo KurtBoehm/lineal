@@ -32,7 +32,7 @@
 namespace msg = lineal::msg;
 namespace test = lineal::test;
 
-using Tlax = test::DefaultSharedDefs;
+using Tlax = test::DefaultSharedDefs<>;
 
 using Defs = Tlax::Defs;
 using Real = Defs::Real;

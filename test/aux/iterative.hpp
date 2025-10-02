@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <optional>
 #include <tuple>
+#include <type_traits>
 
 #include "thesauros/test.hpp"
 #include "thesauros/types.hpp"
@@ -20,7 +21,7 @@
 #include "lineal/tensor.hpp"
 
 namespace lineal::test {
-template<thes::AnyBoolTag TVerbose = thes::BoolTag<false>>
+template<IsScalar TReal, thes::AnyBoolTag TVerbose = thes::BoolTag<false>>
 inline auto cg(const auto& solver, const AnyMatrix auto& lhs, AnyVector auto& sol,
                const AnyVector auto& rhs, const auto& env, const std::size_t iter_num,
                TVerbose verbose = {}) {
@@ -43,7 +44,7 @@ inline auto cg(const auto& solver, const AnyMatrix auto& lhs, AnyVector auto& so
     verbose);
 }
 
-template<typename TReal, AnyVector TSol, thes::AnyBoolTag TVerbose = thes::BoolTag<false>>
+template<IsScalar TReal, AnyVector TSol, thes::AnyBoolTag TVerbose = thes::BoolTag<false>>
 inline TReal gs(const auto& solver, const AnyMatrix auto& lhs, TSol& sol, const AnyVector auto& rhs,
                 const auto& env, const std::size_t iter_num, TVerbose verbose = {}) {
   auto aux = create_numa_undef_like<TSol>(sol, env);
@@ -63,15 +64,16 @@ inline TReal gs(const auto& solver, const AnyMatrix auto& lhs, TSol& sol, const 
     verbose);
 }
 
-template<typename TReal, AnyVector TCoarseVec, AnyMatrix TMat>
+template<IsScalar TReal, AnyVector TCoarseVec, AnyMatrix TMat>
 inline TReal direct(const TMat& mat, const auto& wright_instance, auto& env) {
+  using CoarseValue = std::decay_t<TCoarseVec>::Value;
   const auto& expo = env.execution_policy();
 
   auto hierarchy = wright_instance.create(mat, env);
   const auto& lhs = hierarchy.coarsest_lhs();
   auto& sol_inst = hierarchy.coarsest_solver_instance();
 
-  auto sol_ref = create_constant_like<TCoarseVec>(lhs, 0, env);
+  auto sol_ref = create_constant_like<TCoarseVec>(lhs, compat::zero<CoarseValue>(), env);
   const auto rhs = create_from<TCoarseVec>(lhs * sol_ref, expo);
 
   auto sol = create_numa_undef_like<TCoarseVec>(rhs, env);
@@ -84,11 +86,12 @@ template<typename TDefs, SorVariant tSorVariant, thes::AnyBoolTag TVerbose = the
 inline void suite(const auto& lhs, auto& sol, const auto& rhs, const auto& wright_instance,
                   auto& env, auto op, TVerbose verbose = {}) {
   using Real = TDefs::Real;
+  using VecValue = TDefs::VecValue;
   using IterMan = FixedIterationManager;
   const bool is_symmetric = lhs.is_symmetric() == IsSymmetric{true};
 
   const auto& expo = env.execution_policy();
-  auto zero = [&] { assign(sol, constant_like(sol, 0.0), expo); };
+  auto zero = [&] { assign(sol, constant_like(sol, compat::zero<VecValue>()), expo); };
   auto sol_op = [&](auto res, const auto& envi) { op(res, sol, envi); };
 
   auto rere_controller = [](auto iter, auto /*res*/, auto& /*env*/) {
@@ -99,14 +102,14 @@ inline void suite(const auto& lhs, auto& sol, const auto& rhs, const auto& wrigh
     auto envi = env.add_object("cg");
     zero();
     ConjugateGradientsSolver solver{thes::type_tag<TDefs>, rere_controller};
-    sol_op(cg(solver, lhs, sol, rhs, envi, 128, verbose), envi);
+    sol_op(cg<Real>(solver, lhs, sol, rhs, envi, 128, verbose), envi);
   }
 
   {
     auto envi = env.add_object("bicgstab");
     zero();
     BiCgStabSolver solver{thes::type_tag<TDefs>, rere_controller};
-    sol_op(cg(solver, lhs, sol, rhs, envi, 128, verbose), envi);
+    sol_op(cg<Real>(solver, lhs, sol, rhs, envi, 128, verbose), envi);
   }
 
   {
@@ -146,7 +149,7 @@ inline void suite(const auto& lhs, auto& sol, const auto& rhs, const auto& wrigh
       rere_controller,
       Precon{1.0, IterMan{1}},
     };
-    sol_op(cg(solver, lhs, sol, rhs, envi, 128, verbose), envi);
+    sol_op(cg<Real>(solver, lhs, sol, rhs, envi, 128, verbose), envi);
   }
 
   {
@@ -158,7 +161,7 @@ inline void suite(const auto& lhs, auto& sol, const auto& rhs, const auto& wrigh
       rere_controller,
       Precon{1.0, IterMan{1}},
     };
-    sol_op(cg(solver, lhs, sol, rhs, envi, 128, verbose), envi);
+    sol_op(cg<Real>(solver, lhs, sol, rhs, envi, 128, verbose), envi);
   }
 
   if (is_symmetric) {
@@ -166,7 +169,7 @@ inline void suite(const auto& lhs, auto& sol, const auto& rhs, const auto& wrigh
     zero();
     MultiGridSolver precon{1.0, DefaultCycle{CycleKind::REGULAR, 1}, wright_instance};
     ConjugateGradientsSolver solver{thes::type_tag<TDefs>, rere_controller, precon};
-    sol_op(cg(solver, lhs, sol, rhs, envi, 32, verbose), envi);
+    sol_op(cg<Real>(solver, lhs, sol, rhs, envi, 32, verbose), envi);
   }
 
   {
@@ -174,7 +177,7 @@ inline void suite(const auto& lhs, auto& sol, const auto& rhs, const auto& wrigh
     zero();
     MultiGridSolver precon{1.0, DefaultCycle{CycleKind::REGULAR, 1}, wright_instance};
     BiCgStabSolver solver{thes::type_tag<TDefs>, rere_controller, precon};
-    sol_op(cg(solver, lhs, sol, rhs, envi, 32, verbose), envi);
+    sol_op(cg<Real>(solver, lhs, sol, rhs, envi, 32, verbose), envi);
   }
 }
 

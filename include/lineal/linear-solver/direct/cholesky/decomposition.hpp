@@ -11,7 +11,6 @@
 
 #include "thesauros/functional.hpp"
 #include "thesauros/macropolis.hpp"
-#include "thesauros/math.hpp"
 #include "thesauros/ranges.hpp"
 #include "thesauros/types.hpp"
 
@@ -27,9 +26,11 @@ struct CholeskyDecomposer {
     thes::TypeSeq<typename TMat::ColumnIdx, typename TCholeskyMat::ColumnIdx>::Unique;
 
   using OutValue = TCholeskyMat::Value;
+  using OutScalar = ScalarType<OutValue>;
+  using MatWork = WithScalarType<typename TMat::Value, Real>;
 
-  static constexpr Real dot(const auto& row1, const auto& row2) {
-    Real dot_prod = 0;
+  static constexpr MatWork dot(const auto& row1, const auto& row2) {
+    MatWork dot_prod = compat::zero<MatWork>();
 
     auto it1 = row1.begin();
     const auto end1 = row1.end();
@@ -40,7 +41,7 @@ struct CholeskyDecomposer {
         break;
       }
       if (it1.index() == idx2) {
-        dot_prod += Real(*it1) * Real(val2);
+        dot_prod += compat::cast<Real>(val2) * compat::transpose(compat::cast<Real>(*it1));
       }
     }
 
@@ -56,19 +57,22 @@ struct CholeskyDecomposer {
 
     lower_builder.initialize(matrix.row_num(), IsSymmetric{false});
     for (const Size i : thes::range(matrix.row_num())) {
+      MatWork diag = compat::zero<MatWork>();
+
       // matrix[i][j] = base - dot(matrix[j], matrix[i])
-      auto lambda = [&lower_builder](ColumnIdx j, Real base) THES_ALWAYS_INLINE {
+      auto lambda = [&](ColumnIdx j, MatWork base) THES_ALWAYS_INLINE {
         auto row_j = lower_builder[RowIdx{index_value(j)}];
         assert(row_j.back_column() == j);
-        const Real value = (base - dot(row_j, lower_builder.row_columns())) / Real(row_j.back());
-        if (value != Real{0}) {
-          lower_builder.insert(j, static_cast<OutValue>(value));
+        const MatWork value{compat::solve_right<Real>(
+          compat::transpose(row_j.back()), base - dot(row_j, lower_builder.row_columns()))};
+        if (value != compat::zero<MatWork>()) {
+          diag -= value * compat::transpose(value);
+          lower_builder.insert(j, compat::cast<OutScalar>(value));
         }
       };
 
       Size next_start = 0;
       bool is_first = true;
-      Real diag = 0;
       matrix[RowIdx{i}].iterate(
         [&](ColumnIdx j, auto value) {
           const auto jval = index_value(j);
@@ -76,23 +80,27 @@ struct CholeskyDecomposer {
             is_first = false;
           } else {
             for (const auto k : thes::range(next_start, jval)) {
-              lambda(ColumnIdx{k}, 0);
+              lambda(ColumnIdx{k}, compat::zero<MatWork>());
             }
           }
-          lambda(j, Real(value));
+          lambda(j, compat::cast<Real>(value));
           next_start = jval + 1;
         },
-        [&diag](ColumnIdx /*j*/, auto value) THES_ALWAYS_INLINE { diag = Real(value); },
+        [&diag](ColumnIdx /*j*/, auto value)
+          THES_ALWAYS_INLINE { diag += compat::cast<Real>(value); },
         thes::NoOp{}, valued_tag, ordered_tag);
       for (const Size j : thes::range(next_start, i)) {
-        lambda(ColumnIdx{j}, 0);
+        lambda(ColumnIdx{j}, compat::zero<MatWork>());
       }
 
-      for (const auto [key, value] : lower_builder.row_columns()) {
-        diag -= Real(value) * Real(value);
+      if constexpr (IsScalar<OutValue>) {
+        assert(diag >= 0);
+      } else {
+        assert(diag != compat::zero<MatWork>());
       }
-      assert(diag >= 0);
-      lower_builder.insert(ColumnIdx{i}, static_cast<OutValue>(thes::fast::sqrt(diag)));
+
+      lower_builder.insert(ColumnIdx{i},
+                           compat::cast<OutScalar>(compat::cholesky_lower<MatWork>(diag)));
       ++lower_builder;
     }
     return std::move(lower_builder).build();

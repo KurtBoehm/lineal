@@ -28,6 +28,7 @@ test_deps = [
 ]
 
 tests = {
+  'shared-blocked': [],
   'shared-fixed': [],
   'shared-csr': [],
   'shared-stencil-csr-compressed': [],

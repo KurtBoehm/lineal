@@ -27,17 +27,20 @@
 
 namespace lineal {
 namespace detail {
-template<typename TReal>
+template<typename TReal, AnyVector... TVecs>
 struct OpExprConf {
+  using RealValue =
+    thes::TypeSeq<WithScalarType<typename std::decay_t<TVecs>::Value, TReal>...>::Unique;
+
   using Work = TReal;
-  using Value = TReal;
+  using Value = RealValue;
 };
 } // namespace detail
 
 template<typename TReal, typename TOp, AnyVector... TVecs>
 struct OpExpr : public facades::ComponentWiseOp<OpExpr<TReal, TOp, TVecs...>,
-                                                detail::OpExprConf<TReal>, TVecs...> {
-  using Parent = facades::ComponentWiseOp<OpExpr, detail::OpExprConf<TReal>, TVecs...>;
+                                                detail::OpExprConf<TReal, TVecs...>, TVecs...> {
+  using Parent = facades::ComponentWiseOp<OpExpr, detail::OpExprConf<TReal, TVecs...>, TVecs...>;
 
   explicit OpExpr(TOp&& op, TVecs&&... vecs)
       : Parent(std::forward<TVecs>(vecs)...), op_(std::move(op)) {}
@@ -81,10 +84,11 @@ constexpr auto cw_divide(TVec1&& v1, TVec2&& v2) {
                                      std::forward<TVec2>(v2));
 }
 
-template<std::floating_point TReal, AnyVector TVec>
+template<IsScalar TReal, AnyVector TVec>
 constexpr auto scale(TVec&& vector, TReal scalar) {
-  return detail::make_op_expr<TReal>([scalar](auto value) { return scalar * value; },
-                                     std::forward<TVec>(vector));
+  return detail::make_op_expr<TReal>(
+    [scalar](auto value) { return compat::cast<TReal>(scalar * compat::cast<TReal>(value)); },
+    std::forward<TVec>(vector));
 }
 template<AnyVector TVec>
 constexpr auto cw_abs(TVec&& vector) {
@@ -106,11 +110,15 @@ template<typename TReal>
 struct ConstantExprBase {
   explicit ConstantExprBase(TReal value) : value_(value) {}
 
-  THES_ALWAYS_INLINE constexpr auto compute_impl(auto tag, auto /*idx*/) const {
-    return grex::broadcast(value_, tag);
+  THES_ALWAYS_INLINE constexpr auto compute_impl(auto tag, auto /*idx*/) const
+  requires(requires(TReal value) { compat::broadcast(value, tag); })
+  {
+    return compat::broadcast(value_, tag);
   }
-  decltype(auto) lookup(auto /*idxs*/, grex::AnyTag auto tag) const {
-    return grex::broadcast(value_, tag);
+  decltype(auto) lookup(auto /*idxs*/, grex::AnyTag auto tag) const
+  requires(requires(TReal value) { compat::broadcast(value, tag); })
+  {
+    return compat::broadcast(value_, tag);
   }
 
 private:
@@ -140,20 +148,20 @@ constexpr auto constant_like(const SharedVector auto& src, auto value) {
 
 template<AnyVector TVec1, AnyVector TVec2>
 constexpr auto operator+(TVec1&& v1, TVec2&& v2) {
-  using Real = ValueUnion<TVec1, TVec2>;
+  using Real = ScalarUnion<TVec1, TVec2>;
   return add<Real>(std::forward<TVec1>(v1), std::forward<TVec2>(v2));
 }
 template<AnyVector TVec1, AnyVector TVec2>
 constexpr auto operator-(TVec1&& v1, TVec2&& v2) {
-  using Real = ValueUnion<TVec1, TVec2>;
+  using Real = ScalarUnion<TVec1, TVec2>;
   return subtract<Real>(std::forward<TVec1>(v1), std::forward<TVec2>(v2));
 }
 
-template<AnyVector TVec, std::floating_point TReal>
+template<AnyVector TVec, IsScalar TReal>
 constexpr auto operator*(TVec&& vector, TReal scalar) {
   return scale(std::forward<TVec>(vector), scalar);
 }
-template<std::floating_point TReal, AnyVector TVec>
+template<IsScalar TReal, AnyVector TVec>
 constexpr auto operator*(TReal scalar, TVec&& vector) {
   return scale(std::forward<TVec>(vector), scalar);
 }

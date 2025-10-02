@@ -14,6 +14,7 @@
 #include "thesauros/macropolis.hpp"
 
 #include "lineal/base.hpp"
+#include "lineal/base/compat.hpp"
 #include "lineal/component-wise/facade.hpp"
 #include "lineal/parallel.hpp"
 
@@ -51,7 +52,7 @@ struct AssignSinkBase
   using Dst = std::decay_t<TDst>;
   using Src = std::decay_t<TSrc>;
 
-  using DstValue = Dst::Value;
+  using DstScalar = ScalarType<typename Dst::Value>;
   using Value = Src::Value;
 
   using Parent =
@@ -63,24 +64,24 @@ struct AssignSinkBase
 
   THES_ALWAYS_INLINE static constexpr auto compute_iter(auto tag, [[maybe_unused]] auto& children,
                                                         auto dst_it, auto src_it)
-  requires(requires() { dst_it.store(grex::convert_unsafe<DstValue>(src_it.compute(tag)), tag); })
+  requires(requires() { dst_it.store(compat::cast<DstScalar>(src_it.compute(tag)), tag); })
   {
     assert(src_it - thes::star::get_at<1>(children).begin() <
            thes::star::get_at<1>(children).size());
     const auto val = src_it.compute(tag);
-    dst_it.store(grex::convert_unsafe<DstValue>(val), tag);
+    dst_it.store(compat::cast<DstScalar>(val), tag);
     return val;
   }
   THES_ALWAYS_INLINE static constexpr auto
   compute_base(auto tag, const auto& arg, const auto& /*children*/, auto& dst, auto& src)
   requires(requires() {
     dst.store(add_tag<TIdxTag>(arg),
-              grex::convert_unsafe<DstValue>(src.compute(add_tag<TIdxTag>(arg), tag)), tag);
+              compat::cast<DstScalar>(src.compute(add_tag<TIdxTag>(arg), tag)), tag);
   })
   {
     const auto arg_tag = add_tag<TIdxTag>(arg);
     const auto val = src.compute(arg_tag, tag);
-    dst.store(arg_tag, grex::convert_unsafe<DstValue>(val), tag);
+    dst.store(arg_tag, compat::cast<DstScalar>(val), tag);
     return val;
   }
 

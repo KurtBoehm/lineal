@@ -66,7 +66,13 @@ struct fmt::formatter<
         }
       }();
 
+      bool first_row = true;
       for (const auto& row : range) {
+        if (!first_row) {
+          *it++ = '\n';
+        } else {
+          first_row = false;
+        }
         const auto i = printer.row_trans(row.index());
         it = fmt::format_to(
           it, "{}: ", thes::tstyled(fmt_tag, thes::numeric_string(i).value(), thes::fg_red));
@@ -91,7 +97,6 @@ struct fmt::formatter<
                     [&](const auto col, const auto v) { op(col, v, true); },
                     [&](const auto col, const auto v) { op(col, v, false); }, lineal::valued_tag,
                     lineal::OrderingTag<tIsOrdered>{});
-        *it++ = '\n';
       }
       return it;
     });

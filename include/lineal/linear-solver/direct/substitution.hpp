@@ -21,50 +21,74 @@ namespace lineal {
 template<typename TReal, SharedMatrix TLhs, SharedVector TRhs>
 struct SubstitutionSolver {
   using Real = TReal;
+  using Lhs = std::decay_t<TLhs>;
 
   template<SharedVector TSol>
-  static constexpr void forward(const TLhs& lhs, TSol&& sol, TRhs&& rhs, const auto& /*expo*/) {
-    using SolValue = std::decay_t<TSol>::Value;
+  static constexpr void forward(const TLhs& lhs, TSol&& sol, TRhs&& rhs,
+                                AnyLhsHasUnitDiagonalTag auto lhs_has_unit_diagonal,
+                                const auto& /*expo*/) {
+    using Sol = std::decay_t<TSol>;
+    using SolValue = Sol::Value;
+    using SolScalar = ScalarType<SolValue>;
+    using Work = WithScalarType<SolValue, Real>;
+    using MatWork = WithScalarType<typename Lhs::Value, Real>;
     assert(lhs.row_num() == lhs.column_num());
 
     for (const auto row : lhs) {
       const auto i = row.ext_index();
-      Real sum = Real(rhs[i]);
-      Real diag = 0;
+      Work sum = compat::cast<Real>(rhs[i]);
+      MatWork diag = compat::zero<MatWork>();
 
-      row.iterate([&](auto j, auto v) THES_ALWAYS_INLINE { sum -= Real(v) * Real(sol[j]); },
-                  [&](auto /*j*/, auto v) THES_ALWAYS_INLINE { diag = Real(v); },
-                  [](auto /*j*/, auto /*v*/) THES_ALWAYS_INLINE { std::terminate(); }, valued_tag,
-                  unordered_tag);
+      row.iterate(
+        [&](auto j, auto v)
+          THES_ALWAYS_INLINE { sum -= compat::cast<Real>(v) * compat::cast<Real>(sol[j]); },
+        [&](auto /*j*/, auto v) THES_ALWAYS_INLINE { diag = compat::cast<Real>(v); },
+        [](auto /*j*/, auto /*v*/) THES_ALWAYS_INLINE { std::terminate(); }, valued_tag,
+        unordered_tag);
 
-      assert(diag != 0);
-      sol[i] = SolValue(sum / diag);
+      assert(diag != compat::zero<MatWork>());
+      sol[i] = compat::cast<SolScalar>(
+        compat::solve_tri<Real>(diag, sum, tri_lower_tag, lhs_has_unit_diagonal));
     }
   }
 
   template<SharedVector TSol>
-  static constexpr void backward(const TLhs& lhs, TSol&& sol, TRhs&& rhs, const auto& /*expo*/) {
-    using SolValue = std::decay_t<TSol>::Value;
+  static constexpr void backward(const TLhs& lhs, TSol&& sol, TRhs&& rhs,
+                                 AnyLhsHasUnitDiagonalTag auto lhs_has_unit_diagonal,
+                                 const auto& /*expo*/) {
+    using Sol = std::decay_t<TSol>;
+    using SolValue = Sol::Value;
+    using SolScalar = ScalarType<SolValue>;
+    using Work = WithScalarType<SolValue, Real>;
+    using MatWork = WithScalarType<typename Lhs::Value, Real>;
     assert(lhs.row_num() == lhs.column_num());
 
     for (const auto row : thes::reversed(lhs)) {
       const auto i = row.ext_index();
-      Real sum = Real(rhs[i]);
-      Real diag = 0;
+      Work sum = compat::cast<Real>(rhs[i]);
+      MatWork diag = compat::zero<MatWork>();
 
       row.iterate([](auto /*j*/, auto /*v*/) THES_ALWAYS_INLINE { std::terminate(); },
-                  [&](auto /*j*/, auto v) THES_ALWAYS_INLINE { diag = Real(v); },
-                  [&](auto j, auto v) THES_ALWAYS_INLINE { sum -= Real(v) * Real(sol[j]); },
+                  [&](auto /*j*/, auto v) THES_ALWAYS_INLINE { diag = compat::cast<Real>(v); },
+                  [&](auto j, auto v) THES_ALWAYS_INLINE {
+                    sum -= compat::cast<Real>(v) * compat::cast<Real>(sol[j]);
+                  },
                   valued_tag, unordered_tag);
 
-      assert(diag != 0);
-      sol[i] = SolValue(sum / diag);
+      assert(diag != compat::zero<MatWork>());
+      sol[i] = compat::cast<SolScalar>(
+        compat::solve_tri<Real>(diag, sum, tri_upper_tag, lhs_has_unit_diagonal));
     }
   }
 
   template<SharedVector TSol>
-  static constexpr void backward_trans(const TLhs& lhs, TSol&& sol, TRhs&& rhs, const auto& expo) {
-    using SolValue = std::decay_t<TSol>::Value;
+  static constexpr void backward_trans(const TLhs& lhs, TSol&& sol, TRhs&& rhs,
+                                       AnyLhsHasUnitDiagonalTag auto lhs_has_unit_diagonal,
+                                       const auto& expo) {
+    using Sol = std::decay_t<TSol>;
+    using SolValue = Sol::Value;
+    using SolScalar = ScalarType<SolValue>;
+    using Work = WithScalarType<SolValue, Real>;
     assert(lhs.row_num() == lhs.column_num());
 
     // The result is not computed row by row, as usual, but column by column,
@@ -74,33 +98,43 @@ struct SubstitutionSolver {
       const auto j = row.ext_index();
       assert(row.back_column() == j);
 
-      const Real sol_j = Real(sol[j]) / Real(row.back());
-      sol[j] = SolValue(sol_j);
+      const Work sol_j =
+        compat::solve_tri<Real>(compat::transpose(compat::cast<Real>(row.back())),
+                                compat::cast<Real>(sol[j]), tri_upper_tag, lhs_has_unit_diagonal);
+      sol[j] = compat::cast<SolScalar>(sol_j);
 
-      row.iterate([&](auto i, auto v)
-                    THES_ALWAYS_INLINE { sol[i] = SolValue(Real(sol[i]) - Real(v) * sol_j); },
-                  [](auto /*i*/, auto /*v*/) THES_ALWAYS_INLINE {},
-                  [](auto /*i*/, auto /*v*/) THES_ALWAYS_INLINE { std::terminate(); }, valued_tag,
-                  unordered_tag);
+      row.iterate(
+        [&](auto i, auto v) THES_ALWAYS_INLINE {
+          sol[i] = compat::cast<SolScalar>(compat::cast<Real>(sol[i]) -
+                                           compat::transpose(compat::cast<Real>(v)) * sol_j);
+        },
+        [](auto /*i*/, auto /*v*/) THES_ALWAYS_INLINE {},
+        [](auto /*i*/, auto /*v*/) THES_ALWAYS_INLINE { std::terminate(); }, valued_tag,
+        unordered_tag);
     }
   }
 };
 
 template<typename TReal, SharedMatrix TLhs, SharedVector TSol, SharedVector TRhs>
-constexpr void forward_substitute(const TLhs& lhs, TSol&& sol, TRhs&& rhs, const auto& expo) {
-  return SubstitutionSolver<TReal, TLhs, TRhs>::forward(lhs, std::forward<TSol>(sol),
-                                                        std::forward<TRhs>(rhs), expo);
+constexpr void forward_substitute(const TLhs& lhs, TSol&& sol, TRhs&& rhs,
+                                  AnyLhsHasUnitDiagonalTag auto lhs_has_unit_diagonal,
+                                  const auto& expo) {
+  return SubstitutionSolver<TReal, TLhs, TRhs>::forward(
+    lhs, std::forward<TSol>(sol), std::forward<TRhs>(rhs), lhs_has_unit_diagonal, expo);
 }
 template<typename TReal, SharedMatrix TLhs, SharedVector TSol, SharedVector TRhs>
-constexpr void backward_substitute(const TLhs& lhs, TSol&& sol, TRhs&& rhs, const auto& expo) {
-  return SubstitutionSolver<TReal, TLhs, TRhs>::backward(lhs, std::forward<TSol>(sol),
-                                                         std::forward<TRhs>(rhs), expo);
+constexpr void backward_substitute(const TLhs& lhs, TSol&& sol, TRhs&& rhs,
+                                   AnyLhsHasUnitDiagonalTag auto lhs_has_unit_diagonal,
+                                   const auto& expo) {
+  return SubstitutionSolver<TReal, TLhs, TRhs>::backward(
+    lhs, std::forward<TSol>(sol), std::forward<TRhs>(rhs), lhs_has_unit_diagonal, expo);
 }
 template<typename TReal, SharedMatrix TLhs, SharedVector TSol, SharedVector TRhs>
 constexpr void backward_substitute_transposed(const TLhs& lhs, TSol&& sol, TRhs&& rhs,
+                                              AnyLhsHasUnitDiagonalTag auto lhs_has_unit_diagonal,
                                               const auto& expo) {
-  return SubstitutionSolver<TReal, TLhs, TRhs>::backward_trans(lhs, std::forward<TSol>(sol),
-                                                               std::forward<TRhs>(rhs), expo);
+  return SubstitutionSolver<TReal, TLhs, TRhs>::backward_trans(
+    lhs, std::forward<TSol>(sol), std::forward<TRhs>(rhs), lhs_has_unit_diagonal, expo);
 }
 } // namespace lineal
 

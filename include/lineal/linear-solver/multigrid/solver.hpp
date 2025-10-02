@@ -28,6 +28,10 @@ struct MultiGridSolver : public SharedStationaryIterativeSolverBase,
 
   template<typename THierarchy>
   struct Instance {
+    using Hierarchy = std::decay_t<THierarchy>;
+    using CoarseSol = Hierarchy::CoarseSol;
+    using CoarseSolValue = CoarseSol::Value;
+
     static constexpr std::size_t in_situ_aux_size = 0;
     static constexpr std::size_t ex_situ_aux_size = 0;
 
@@ -101,8 +105,8 @@ struct MultiGridSolver : public SharedStationaryIterativeSolverBase,
             auto& fine_aux = hierarchy_.fine_aux(level);
 
             // The first argument replaces setting the coarse solution to 0 before recursion
-            fine_pre_smoother.apply(constant_like(fine_sol, Real{0}), fine_sol, fine_rhs, fine_aux,
-                                    env);
+            fine_pre_smoother.apply(constant_like(fine_sol, compat::zero<CoarseSolValue>()),
+                                    fine_sol, fine_rhs, fine_aux, env);
             thes::fancy_visit(
               [&](auto& trans) {
                 coarsen_vector<Real>(coarse_rhs,

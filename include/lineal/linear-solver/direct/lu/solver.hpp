@@ -39,8 +39,8 @@ struct LuSolver : public SharedDirectSolverBase, public DistributedDirectSolverB
     {
       decltype(auto) expo = env.execution_policy();
       SharedVector auto& aux_vec = thes::star::get_at<0>(std::forward<TAux>(aux));
-      forward_substitute<Real>(lower(), aux_vec, rhs, expo);
-      backward_substitute<Real>(upper(), sol, aux_vec, expo);
+      forward_substitute<Real>(lower(), aux_vec, rhs, lhs_has_unit_diagonal_tag<true>, expo);
+      backward_substitute<Real>(upper(), sol, aux_vec, lhs_has_unit_diagonal_tag<false>, expo);
     }
 
     [[nodiscard]] const Lhs& lhs() const {

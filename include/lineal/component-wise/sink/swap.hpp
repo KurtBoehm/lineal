@@ -35,8 +35,10 @@ struct SwapSink
 
   using Lhs = std::decay_t<TLhs>;
   using Rhs = std::decay_t<TRhs>;
-  using ValueLhs = Lhs::Value;
-  using ValueRhs = Rhs::Value;
+  using LhsValue = Lhs::Value;
+  using LhsScalar = ScalarType<LhsValue>;
+  using RhsValue = Rhs::Value;
+  using RhsScalar = ScalarType<RhsValue>;
   using Size = SizeIntersection<Lhs, Rhs>;
   static constexpr bool is_shared = SharedTensors<TLhs, TRhs>;
   static constexpr auto exec_constraints = merged_exec_constraints<thes::Tuple<Lhs, Rhs>>;
@@ -45,16 +47,26 @@ struct SwapSink
       : Parent(std::forward<TLhs>(lhs), std::forward<TRhs>(rhs)) {}
 
   THES_ALWAYS_INLINE static constexpr auto compute_iter(auto tag, const auto& /*children*/,
-                                                        auto it1, auto it2) {
-    const auto val1 = grex::convert_unsafe<ValueRhs>(it1.compute(tag));
-    const auto val2 = grex::convert_unsafe<ValueLhs>(it2.compute(tag));
+                                                        auto it1, auto it2)
+  requires(requires {
+    it1.compute(tag);
+    it2.compute(tag);
+  })
+  {
+    const auto val1 = compat::cast<RhsScalar>(it1.compute(tag));
+    const auto val2 = compat::cast<LhsScalar>(it2.compute(tag));
     it1.store(val2, tag);
     it2.store(val1, tag);
   }
   THES_ALWAYS_INLINE static constexpr auto
-  compute_base(auto tag, const auto& arg, const auto& /*children*/, Lhs& lhs, const Rhs& rhs) {
-    const auto val1 = grex::convert_unsafe<ValueRhs>(lhs.compute(arg, tag));
-    const auto val2 = grex::convert_unsafe<ValueLhs>(rhs.compute(arg, tag));
+  compute_base(auto tag, const auto& arg, const auto& /*children*/, Lhs& lhs, const Rhs& rhs)
+  requires(requires {
+    lhs.compute(arg, tag);
+    rhs.compute(arg, tag);
+  })
+  {
+    const auto val1 = compat::cast<RhsScalar>(lhs.compute(arg, tag));
+    const auto val2 = compat::cast<LhsScalar>(rhs.compute(arg, tag));
     lhs.store(arg, val2, tag);
     rhs.store(arg, val1, tag);
   }
