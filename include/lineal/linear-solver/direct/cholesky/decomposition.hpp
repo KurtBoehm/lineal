@@ -111,7 +111,6 @@ template<typename TReal, SharedMatrix TCholeskyMat, SharedMatrix TMat>
 constexpr TCholeskyMat cholesky_decompose(const TMat& mat) {
   return CholeskyDecomposer<TReal, TMat, TCholeskyMat>::decompose(mat);
 }
-
 } // namespace lineal
 
 #endif // INCLUDE_LINEAL_LINEAR_SOLVER_DIRECT_CHOLESKY_DECOMPOSITION_HPP

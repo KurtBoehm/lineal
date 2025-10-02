@@ -54,6 +54,7 @@ struct fmt::formatter<
     : public fmt::nested_formatter<typename std::decay_t<TMatrix>::Value> {
   using Self =
     lineal::MatrixPrinter<TMatrix, TRowTrans, TColTrans, tSkipZero, tFormat, tIsOrdered, tExtended>;
+  using Value = std::decay_t<TMatrix>::Value;
   static constexpr auto fmt_tag = thes::FormattingTag<tFormat>{};
 
   auto format(const Self& printer, fmt::format_context& ctx) const {
@@ -80,7 +81,7 @@ struct fmt::formatter<
         thes::Delimiter delim{", "};
         auto op = [&](const auto col, const auto v, auto is_diag) {
           if constexpr (tSkipZero) {
-            if (v == 0) {
+            if (v == lineal::compat::zero<Value>()) {
               return;
             }
           }

@@ -124,7 +124,6 @@ template<typename TReal, SharedMatrix TLuMat, SharedMatrix TMat>
 constexpr std::pair<TLuMat, TLuMat> lu_decompose(const TMat& mat) {
   return LuDecomposer<TReal, TMat, TLuMat>::decompose(mat);
 }
-
 } // namespace lineal
 
 #endif // INCLUDE_LINEAL_LINEAR_SOLVER_DIRECT_LU_DECOMPOSITION_HPP

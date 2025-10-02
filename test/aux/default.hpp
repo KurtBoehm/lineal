@@ -72,8 +72,8 @@ struct DefaultSharedDefs {
   using ByteAlloc = Alloc<std::byte>;
 
   using LookupSymmetricDiffInfo = LookupSymmetricDiffusionInfo<BaseDefs>;
-  template<typename TReal>
-  using DenseVector = lineal::DenseVector<TReal, Size, simd_pad_size<TReal>, Alloc<TReal>>;
+  template<typename TValue>
+  using DenseVector = lineal::DenseVector<TValue, Size, simd_pad_size<TValue>, Alloc<TValue>>;
 
   struct Defs : public BaseDefs {
     using SystemInfo = const LookupSymmetricDiffInfo&;
@@ -94,8 +94,8 @@ struct DefaultSharedDefs {
   using StencilMatrix = AdjacentStencilMatrix<const TValuator&>;
   template<typename TValuator>
   using StencilVector = AdjacentStencilVector<const TValuator&>;
-  template<typename TReal>
-  using CsrMatrix = lineal::CsrMatrix<TReal, SizeByte, NonZeroSizeByte, Alloc<TReal>>;
+  template<typename TValue>
+  using CsrMatrix = lineal::CsrMatrix<TValue, SizeByte, NonZeroSizeByte, Alloc<TValue>>;
 
   using DuneDepCriterion = amg::DuneDependencyCriterion<Real>;
   using DepDetective = DependencyDetective<DuneDepCriterion>;
@@ -188,7 +188,6 @@ struct DefaultSharedDefs {
       PreSmoother{/*relax=*/1.0}, PostSmoother{/*relax=*/1.0}, CoarseSolver{});
   }
 };
-
 } // namespace lineal::test
 
 #endif // TEST_AUX_STENCIL_HPP

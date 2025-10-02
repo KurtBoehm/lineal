@@ -279,7 +279,6 @@ struct JacobiSweep<TDistInfo, TReal, TLhs, TSolIn, TSolOut, TRhs>
     return impl::geometry(this->children());
   }
 };
-
 } // namespace lineal::detail
 
 #endif // INCLUDE_LINEAL_LINEAR_SOLVER_ITERATIVE_STATIONARY_JACOBI_SWEEP_HPP

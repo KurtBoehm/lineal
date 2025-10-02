@@ -114,6 +114,10 @@ struct SorSweepSink
     }
       .get(thes::auto_tag<tDir>);
 
+  static_assert(
+    IsScalar<OutValue> || tVariant != SorVariant::ultra,
+    "The “ultra” SOR variant is only supported for matrices/vectors with scalar entries!");
+
   using Parent = facades::ComponentWiseOp<SorSweepSink, SorSweepConf, TLhs, TSolIn, TSolOut, TRhs>;
   using DistInfoStorage = thes::VoidStorage<TDistInfo>;
 
@@ -526,7 +530,6 @@ struct SorSweep<TDistInfo, tVariant, tDir, TReal, TLhs, TSolIn, TSolOut, TRhs>
     return impl::geometry(this->children());
   }
 };
-
 } // namespace detail
 } // namespace lineal
 
